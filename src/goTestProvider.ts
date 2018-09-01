@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import { FileSystemProvider } from './fileExplorer';
+import { FileSystemProvider } from './fileSystemProvider';
 
 export class GoTestProvider implements vscode.TreeDataProvider<Dependency> {
 
@@ -16,7 +14,6 @@ export class GoTestProvider implements vscode.TreeDataProvider<Dependency> {
 	}
 
 	getTreeItem(element: Dependency): vscode.TreeItem {
-		//return element;
 		const treeItem = new vscode.TreeItem(element.label, element.isTestsuit ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
 
 		if(!element.isTestsuit)
@@ -65,11 +62,6 @@ class Dependency extends vscode.TreeItem {
 	get tooltip(): string {
 		return `${this.label}`
 	}
-
-	iconPath = {
-		light: path.join(__filename, '..', '..', '..', 'resources', 'light', 'dependency.svg'),
-		dark: path.join(__filename, '..', '..', '..', 'resources', 'dark', 'dependency.svg')
-	};
 
 	contextValue = 'dependency';
 

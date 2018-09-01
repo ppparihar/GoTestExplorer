@@ -319,19 +319,3 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
 		return treeItem;
 	}
 }
-
-export class FileExplorer {
-
-	private fileExplorer: vscode.TreeView<Entry>;
-
-	constructor(context: vscode.ExtensionContext) {
-		const treeDataProvider = new FileSystemProvider();
-
-		this.fileExplorer = vscode.window.createTreeView('fileExplorer', { treeDataProvider });
-		vscode.commands.registerCommand('fileExplorer.openFile', (resource) => this.openResource(resource));
-	}
-
-	private openResource(resource: vscode.Uri): void {
-		vscode.window.showTextDocument(resource);
-	}
-}
