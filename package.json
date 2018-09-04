@@ -11,29 +11,48 @@
         "Other"
     ],
     "activationEvents": [
-        "onView:testExplorer" ,      
-        "onView:fileExplorer"       
+        "onView:goTestExplorer",
+        "onView:fileExplorer"
     ],
-    "main": "./out/extension",
+    "main": "./out/src/extension",
     "contributes": {
         "viewsContainers": {
             "activitybar": [
                 {
-                    "id": "goTestExplorer",
+                    "id": "testExplorer",
                     "title": "go Test Explorer",
                     "icon": "media/test.svg"
                 }
             ]
         },
         "views": {
-            "goTestExplorer": [
+            "testExplorer": [
                 {
-                    "id": "testExplorer",
+                    "id": "goTestExplorer",
                     "name": "Go Test Explorer"
                 }
-                
             ]
-        }
+        },
+        "menus": {
+            "view/title": [
+                {
+                    "command": "goTestExplorer.refreshTestExplorer",
+                    "when": "view == goTestExplorer",
+                    "group": "navigation@1"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "goTestExplorer.refreshTestExplorer",
+                "title": "Refresh",
+                "icon": {
+                    "light": "resources/light/run.png",
+                    "dark": "resources/dark/run.png"
+                }
+            }
+        ]
+        
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",

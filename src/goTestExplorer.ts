@@ -3,16 +3,21 @@ import path = require('path');
 import { GoTestProvider } from './goTestProvider';
 import { goTest } from './lib/testUtil';
 import { TestNode } from './TestNode';
+import { Commands } from './commands';
 
 export class GoTestExplorer {
 
     constructor(context: vscode.ExtensionContext) {
 
-        const goTestProvider = new GoTestProvider(vscode.workspace.rootPath,context);
+        const commands = new Commands();
+        const goTestProvider = new GoTestProvider(vscode.workspace.rootPath,context,commands);
 
-        vscode.window.registerTreeDataProvider('testExplorer', goTestProvider);
+        vscode.window.registerTreeDataProvider('goTestExplorer', goTestProvider);
 
         let disposable = vscode.commands.registerCommand('goTestExplorer.runTest', this.onRunSingleTest)
+        context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.refreshTestExplorer", () => {
+            goTestProvider.refreshTestExplorer();
+        }));
         context.subscriptions.push(disposable);
     }
     onRunSingleTest(testNode: TestNode) {
