@@ -1,6 +1,6 @@
 
 import vscode = require('vscode');
-import { TestResult } from './TestResult';
+import { TestResult } from './testResult';
 export class TestNode {
 	private _testResult: TestResult;
 	private _isLoading: boolean;

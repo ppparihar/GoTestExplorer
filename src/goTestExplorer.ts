@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import path = require('path');
 import { GoTestProvider } from './goTestProvider';
 import { goTest } from './lib/testUtil';
-import { TestNode } from './TestNode';
+import { TestNode } from './testNode';
 import { Commands } from './commands';
-import { TestResult } from './TestResult';
+import { TestResult } from './testResult';
 
 export class GoTestExplorer {
 

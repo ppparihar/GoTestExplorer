@@ -1,5 +1,5 @@
 import { EventEmitter, Event } from "vscode";
-import { TestNode } from "./TestNode";
+import { TestNode } from "./testNode";
 
 export class Commands {
 

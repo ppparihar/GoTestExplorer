@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from "path";
-import { FileSystemProvider } from './fileSystemProvider';
+
 import { getTestFunctions } from './lib/testUtil';
-import { TestNode } from './TestNode';
+import { TestNode } from './testNode';
 import { Commands } from './commands';
-import { TestResult } from './TestResult';
+import { TestResult } from './testResult';
 import { TestFinder } from './testFinder';
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
@@ -57,27 +57,29 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		this.discoveredTests = null;
 		this.refresh();
 
-		//let fileSystemProvider = new FileSystemProvider();
 		const workspaceFolder = vscode.workspace.workspaceFolders.filter(folder => folder.uri.scheme === 'file')[0];
 		const uri = workspaceFolder.uri;
 		
-		TestFinder.getGoTestFiles(uri).then(items => {
-			let promises = items.map(item => {
-				let suite = new TestNode(item.name, item.uri)
-				return getTestFunctions(suite.uri, null).then(symbols => {
-					symbols = symbols.sort((a, b) => a.name.localeCompare(b.name));
-					let nodeList = symbols.map(symbol => new TestNode(`${symbol.name}`, suite.uri))
-					return new TestNode(suite.name, suite.uri, nodeList)
-				})
-			})
-			Promise.all(promises).then(testNodeList => {
-				this.commands.sendDiscoveredTest([].concat(...testNodeList))
-				this.refresh();
-			})
-
+		this.discoverTests(uri).catch(err=>{
+			console.error(err)
 		})
+	}
 
+	async discoverTests(uri : vscode.Uri){
+		const items = await TestFinder.getGoTestFiles(uri);
+		let promises =  items.map(async item => {
+		   let suite = new TestNode(item.name, item.uri)
+		   let symbols = await getTestFunctions(suite.uri, null)
 
+		   symbols = symbols.sort((a, b) => a.name.localeCompare(b.name));
+		   let nodeList = symbols.map(symbol => new TestNode(`${symbol.name}`, suite.uri))
+		   return new TestNode(suite.name, suite.uri, nodeList)
+	   });
+
+	   Promise.all(promises).then(testNodeList => {
+		   this.commands.sendDiscoveredTest([].concat(...testNodeList))
+		   this.refresh();
+	   })
 	}
 
 	updateTestResult(testResult: TestResult) {
