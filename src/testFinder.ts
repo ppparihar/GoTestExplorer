@@ -5,20 +5,6 @@ import { Entry } from './entry';
 
 export class TestFinder {
 
-    static async  getChildren(element?: Entry): Promise<Entry[]> {
-        if (element) {
-            const fileSystemProvider = new FileSystemProvider();
-            const children = await fileSystemProvider.readDirectory(element.uri);
-            return this.filterGoTestFileOrDirectory(children).map(([name, type]) => ({ name: name, uri: vscode.Uri.file(path.join(element.uri.fsPath, name)), type }));
-        }
-
-        const workspaceFolder = vscode.workspace.workspaceFolders.filter(folder => folder.uri.scheme === 'file')[0];
-        if (workspaceFolder) {
-            return this.getGoTestFiles(workspaceFolder.uri);
-        }
-
-        return [];
-    }
     static async getGoTestFiles(uri: vscode.Uri): Promise<Entry[]> {
         const fileSystemProvider = new FileSystemProvider();
 
@@ -49,7 +35,9 @@ export class TestFinder {
 
     }
     static filterGoTestFileOrDirectory(items: [string, vscode.FileType][]): [string, vscode.FileType][] {
-        var result = items.filter(([name, type]) => name.endsWith("_test.go") && type === vscode.FileType.File || type === vscode.FileType.Directory)
-        return result;
+        return items.filter(([name, type]) => name.endsWith("_test.go")
+            && type === vscode.FileType.File
+            || type === vscode.FileType.Directory
+        )
     }
 }

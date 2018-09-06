@@ -9,7 +9,7 @@ export class Commands {
     public get discoveredTest() :Event<TestNode[]>{
         return this.onTestDiscoveryFinishedEmitter.event;
     }
-    public  sendDiscoveredTest(testNodeList :TestNode[]){
+    public  sendDiscoveredTests(testNodeList :TestNode[]){
         this.onTestDiscoveryFinishedEmitter.fire(testNodeList)
         
     }

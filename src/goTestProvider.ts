@@ -77,7 +77,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	   });
 
 	   Promise.all(promises).then(testNodeList => {
-		   this.commands.sendDiscoveredTest([].concat(...testNodeList))
+		   this.commands.sendDiscoveredTests([].concat(...testNodeList))
 		   this.refresh();
 	   })
 	}
