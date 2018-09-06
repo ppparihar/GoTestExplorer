@@ -5,6 +5,7 @@ import { getTestFunctions } from './lib/testUtil';
 import { TestNode } from './TestNode';
 import { Commands } from './commands';
 import { TestResult } from './TestResult';
+import { TestFinder } from './testFinder';
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
@@ -21,9 +22,9 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	}
 
 	getTreeItem(testNode: TestNode): vscode.TreeItem {
-		const treeItem = new vscode.TreeItem(testNode.label, testNode.isTestsuit ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+		const treeItem = new vscode.TreeItem(testNode.name, testNode.isTestSuite ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
 
-		if (!testNode.isTestsuit) {
+		if (!testNode.isTestSuite) {
 			treeItem.command = {
 				command: 'goTestExplorer.runTest',
 				title: "show Test list",
@@ -41,23 +42,13 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	}
 
 	getChildren(testNode?: TestNode): Thenable<TestNode[]> {
-		if (!this.workspaceRoot) {
-			vscode.window.showInformationMessage('No dependency in empty workspace');
-			return Promise.resolve([]);
+		if (testNode) {
+			return Promise.resolve(testNode.children);
 		}
 		if (!this.discoveredTests) {
 			return Promise.resolve(
-				[new TestNode("Loading...", null, "run.png", false, null)])
+				[new TestNode("Loading...", null)])
 		}
-		if (testNode) {
-			return getTestFunctions(testNode.uri, null).then(symbols => {
-				symbols = symbols.sort();
-				return symbols.map(symbol =>
-					new TestNode(`${symbol.name}`, testNode.uri, "run.png", false, symbol)
-				)
-			})
-		}
-
 		return Promise.resolve(this.discoveredTests)
 	}
 
@@ -66,19 +57,32 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		this.discoveredTests = null;
 		this.refresh();
 
-		let fileSystemProvider = new FileSystemProvider();
-		fileSystemProvider.getChildren().then(items => {
-			let testNodeList = items.map(item => new TestNode(item.name, item.uri, "testSuit.svg", true))
-			this.commands.sendDiscoveredTest(testNodeList)
-			this.refresh();
+		//let fileSystemProvider = new FileSystemProvider();
+		const workspaceFolder = vscode.workspace.workspaceFolders.filter(folder => folder.uri.scheme === 'file')[0];
+		const uri = workspaceFolder.uri;
+		
+		TestFinder.getGoTestFiles(uri).then(items => {
+			let promises = items.map(item => {
+				let suite = new TestNode(item.name, item.uri)
+				return getTestFunctions(suite.uri, null).then(symbols => {
+					symbols = symbols.sort((a, b) => a.name.localeCompare(b.name));
+					let nodeList = symbols.map(symbol => new TestNode(`${symbol.name}`, suite.uri))
+					return new TestNode(suite.name, suite.uri, nodeList)
+				})
+			})
+			Promise.all(promises).then(testNodeList => {
+				this.commands.sendDiscoveredTest([].concat(...testNodeList))
+				this.refresh();
+			})
+
 		})
 
 
 	}
 
 	updateTestResult(testResult: TestResult) {
-	
-		
+
+
 	}
 	onDicoveredTest(testNodeList: TestNode[]) {
 		this.discoveredTests = testNodeList

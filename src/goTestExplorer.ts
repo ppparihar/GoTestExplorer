@@ -30,10 +30,10 @@ export class GoTestExplorer {
             dir: path.dirname(testNode.uri.fsPath),
             goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
             flags: [""],
-            functions: [testNode.symbol.name]
+            functions: [testNode.name]
         }
         goTest(testConfig).then(result => {
-            this.goTestProvider.updateTestResult( new TestResult(testNode.symbol.name, result))
+            this.goTestProvider.updateTestResult( new TestResult(testNode.name, result))
         })
     }
 }
