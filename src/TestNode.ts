@@ -7,5 +7,5 @@ export class TestNode {
 	get tooltip(): string {
 		return `${this.label}`;
 	}
-	contextValue = 'dependency';
+	
 }

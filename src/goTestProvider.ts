@@ -4,6 +4,7 @@ import { FileSystemProvider } from './fileSystemProvider';
 import { getTestFunctions } from './lib/testUtil';
 import { TestNode } from './TestNode';
 import { Commands } from './commands';
+import { TestResult } from './TestResult';
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
@@ -50,6 +51,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		}
 		if (testNode) {
 			return getTestFunctions(testNode.uri, null).then(symbols => {
+				symbols = symbols.sort();
 				return symbols.map(symbol =>
 					new TestNode(`${symbol.name}`, testNode.uri, "run.png", false, symbol)
 				)
@@ -57,14 +59,13 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		}
 
 		return Promise.resolve(this.discoveredTests)
-
-
 	}
+
 	refreshTestExplorer() {
-		
+
 		this.discoveredTests = null;
 		this.refresh();
-		
+
 		let fileSystemProvider = new FileSystemProvider();
 		fileSystemProvider.getChildren().then(items => {
 			let testNodeList = items.map(item => new TestNode(item.name, item.uri, "testSuit.svg", true))
@@ -74,8 +75,10 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
 
 	}
-	addTestResult(testNode: TestNode) {
 
+	updateTestResult(testResult: TestResult) {
+	
+		
 	}
 	onDicoveredTest(testNodeList: TestNode[]) {
 		this.discoveredTests = testNodeList

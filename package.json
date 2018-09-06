@@ -39,13 +39,42 @@
                     "command": "goTestExplorer.refreshTestExplorer",
                     "when": "view == goTestExplorer",
                     "group": "navigation@1"
+                },
+                {
+                    "command": "goTestExplorer.runAllTest",
+                    "when": "view == goTestExplorer",
+                    "group": "navigation@0"
                 }
-            ]
+            ],
+            "view/item/context": [
+                
+                {
+                  "command": "goTestExplorer.runTest",
+                  "when": "view == goTestExplorer",
+                  "group": "navigation@0"
+                }
+              ]
         },
         "commands": [
             {
                 "command": "goTestExplorer.refreshTestExplorer",
                 "title": "Refresh",
+                "icon": {
+                    "light": "resources/light/refresh.svg",
+                    "dark": "resources/dark/refresh.svg"
+                }
+            },
+            {
+                "command": "goTestExplorer.runTest",
+                "title": "Run",
+                "icon": {
+                    "light": "resources/light/run.png",
+                    "dark": "resources/dark/run.png"
+                }
+            },
+            {
+                "command": "goTestExplorer.runAllTest",
+                "title": "Run All",
                 "icon": {
                     "light": "resources/light/run.png",
                     "dark": "resources/dark/run.png"
