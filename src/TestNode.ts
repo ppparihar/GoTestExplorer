@@ -23,7 +23,9 @@ export class TestNode {
 		return this._testResult;
 	}
 	get icon(): string {
-		return this._isLoading ? "spinner.svg" : "run.png"
+		//return "run.png";
+		//return this._isLoading ? "spinner.svg" : this.testResult === null ? "run.png" : this.testResult.result ? "testPassed.png" : "testFailed.png"
+		return  !this.testResult ? "run.png" : this.testResult.result ? "testPassed.png" : "testFailed.png"
 	}
 	get children(): TestNode[] {
 		return this._children;

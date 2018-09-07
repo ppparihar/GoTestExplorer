@@ -11,7 +11,7 @@ export class TestFinder {
         const children = await fileSystemProvider.readDirectory(uri);
         const results = this.filterGoTestFileOrDirectory(children);
         let files = results.filter(([name, type]) => type === vscode.FileType.File)
-            .map(([name, type]) => ({ name: name, uri: vscode.Uri.file(path.join(uri.fsPath, name)), type }));
+                            .map(([name, type]) => ({ name: name, uri: vscode.Uri.file(path.join(uri.fsPath, name)), type }));
 
 
         let resultfiles = results.filter(([name, type]) => type === vscode.FileType.Directory)

@@ -106,7 +106,7 @@ function resolveToolsGopath(): string {
  *
  * @param goConfig Configuration for the Go extension.
  */
-export function goTest(testconfig: TestConfig): Thenable<boolean> {
+export function runGoTest(testconfig: TestConfig): Thenable<boolean> {
 	return new Promise<boolean>((resolve, reject) => {
 
 		// We do not want to clear it if tests are already running, as that could

@@ -12,7 +12,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<TestNode | undefined>();
 	readonly onDidChangeTreeData: vscode.Event<TestNode | undefined> = this._onDidChangeTreeData.event;
 
-	discoveredTests: TestNode[]
+	_discoveredTests: TestNode[]
 	constructor(private workspaceRoot: string, private context: vscode.ExtensionContext, private commands: Commands) {
 		commands.discoveredTest(this.onDicoveredTest, this)
 	}
@@ -45,49 +45,58 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		if (testNode) {
 			return Promise.resolve(testNode.children);
 		}
-		if (!this.discoveredTests) {
+		if (!this._discoveredTests) {
 			return Promise.resolve(
 				[new TestNode("Loading...", null)])
 		}
-		return Promise.resolve(this.discoveredTests)
+		return Promise.resolve(this._discoveredTests)
 	}
 
 	refreshTestExplorer() {
 
-		this.discoveredTests = null;
+		this._discoveredTests = [];
 		this.refresh();
 
 		const workspaceFolder = vscode.workspace.workspaceFolders.filter(folder => folder.uri.scheme === 'file')[0];
 		const uri = workspaceFolder.uri;
-		
-		this.discoverTests(uri).catch(err=>{
+
+		this.discoverTests(uri).catch(err => {
 			console.error(err)
 		})
 	}
 
-	async discoverTests(uri : vscode.Uri){
+	async discoverTests(uri: vscode.Uri) {
 		const items = await TestFinder.getGoTestFiles(uri);
-		let promises =  items.map(async item => {
-		   let suite = new TestNode(item.name, item.uri)
-		   let symbols = await getTestFunctions(suite.uri, null)
+		let promises = items.map(async item => {
+			let suite = new TestNode(item.name, item.uri)
+			let symbols = await getTestFunctions(suite.uri, null)
 
-		   symbols = symbols.sort((a, b) => a.name.localeCompare(b.name));
-		   let nodeList = symbols.map(symbol => new TestNode(`${symbol.name}`, suite.uri))
-		   return new TestNode(suite.name, suite.uri, nodeList)
-	   });
+			symbols = symbols.sort((a, b) => a.name.localeCompare(b.name));
+			let nodeList = symbols.map(symbol => new TestNode(`${symbol.name}`, suite.uri))
+			return new TestNode(suite.name, suite.uri, nodeList)
+		});
 
-	   Promise.all(promises).then(testNodeList => {
-		   this.commands.sendDiscoveredTests([].concat(...testNodeList))
-		   this.refresh();
-	   })
+		Promise.all(promises).then(testNodeList => {
+			this.commands.sendDiscoveredTests([].concat(...testNodeList))
+			this.refresh();
+		})
 	}
 
 	updateTestResult(testResult: TestResult) {
 
-
+		let index = this._discoveredTests.findIndex(s => s.uri === testResult.uri);
+		if (index > -1) {
+			let index2 = this._discoveredTests[index].children.findIndex(t => t.name === testResult.functionName);
+			if (index2 > -1)
+				this._discoveredTests[index].children[index2].testResult = testResult;
+		}
+		this.refresh();
 	}
 	onDicoveredTest(testNodeList: TestNode[]) {
-		this.discoveredTests = testNodeList
+		this._discoveredTests = testNodeList
+	}
+	get discoveredTests(): TestNode[] {
+		return this._discoveredTests;
 	}
 }
 
