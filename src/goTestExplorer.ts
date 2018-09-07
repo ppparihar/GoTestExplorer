@@ -40,11 +40,10 @@ export class GoTestExplorer {
 
 
     }
+
     onRunAllTests() {
-        this.goTestProvider.discoveredTests.forEach(s => {
-            if (s.children && s.children.length > 0) {
-                s.children.forEach(t => this.onRunSingleTest(t))
-            }
-        })
+        this.goTestProvider.discoveredTests.
+            filter(s => s.children && s.children.length > 0).
+            forEach(s => s.children.forEach(t => this.onRunSingleTest(t)))
     }
 }
