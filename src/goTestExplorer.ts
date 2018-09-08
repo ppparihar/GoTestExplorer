@@ -34,7 +34,8 @@ export class GoTestExplorer {
             flags: [""],
             functions: [testNode.name]
         }
-
+        this.goTestProvider.setLoading(testNode)
+        
         let result = await runGoTest(testConfig)
         this.goTestProvider.updateTestResult(new TestResult(testNode.uri, testNode.name, result))
 
@@ -42,6 +43,7 @@ export class GoTestExplorer {
     }
 
     onRunAllTests() {
+        this.goTestProvider.setAlloading();
         this.goTestProvider.discoveredTests.
             filter(s => s.children && s.children.length > 0).
             forEach(s => s.children.forEach(t => this.onRunSingleTest(t)))

@@ -84,11 +84,11 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
 	updateTestResult(testResult: TestResult) {
 
-		let index = this._discoveredTests.findIndex(s => s.uri === testResult.uri);
+		let index = this.discoveredTests.findIndex(s => s.uri === testResult.uri);
 		if (index > -1) {
-			let index2 = this._discoveredTests[index].children.findIndex(t => t.name === testResult.functionName);
+			let index2 = this.discoveredTests[index].children.findIndex(t => t.name === testResult.functionName);
 			if (index2 > -1)
-				this._discoveredTests[index].children[index2].testResult = testResult;
+				this.discoveredTests[index].children[index2].testResult = testResult;
 		}
 		this.refresh();
 	}
@@ -97,6 +97,23 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	}
 	get discoveredTests(): TestNode[] {
 		return this._discoveredTests;
+	}
+
+	setLoading(testNode:TestNode){
+		let index = this.discoveredTests.findIndex(s => s.uri === testNode.uri);
+		if (index > -1) {
+			let index2 = this.discoveredTests[index].children.findIndex(t => t.name === testNode.name);
+			if (index2 > -1)
+				this.discoveredTests[index].children[index2].setLoading();
+		}
+		this.refresh();
+	}
+	setAlloading(){
+		this.discoveredTests.
+		filter(s => s.children && s.children.length > 0).
+		forEach(s => s.children.forEach(t => t.setLoading()));
+
+		this.refresh();
 	}
 }
 
