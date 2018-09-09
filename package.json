@@ -49,9 +49,12 @@
             "view/item/context": [
                 
                 {
-                  "command": "goTestExplorer.runTest",
-                  "when": "view == goTestExplorer",
-                  "group": "navigation@0"
+                  "command": "goTestExplorer.goToLocation",
+                  "when": "view == goTestExplorer"
+                },
+                {
+                  "command": "goTestExplorer.showTestoutput",
+                  "when": "view == goTestExplorer"
                 }
               ]
         },
@@ -75,6 +78,22 @@
             {
                 "command": "goTestExplorer.runAllTest",
                 "title": "Run All",
+                "icon": {
+                    "light": "resources/light/run.png",
+                    "dark": "resources/dark/run.png"
+                }
+            },
+            {
+                "command": "goTestExplorer.goToLocation",
+                "title": "Go here",
+                "icon": {
+                    "light": "resources/light/run.png",
+                    "dark": "resources/dark/run.png"
+                }
+            },
+            {
+                "command": "goTestExplorer.showTestoutput",
+                "title": "show output",
                 "icon": {
                     "light": "resources/light/run.png",
                     "dark": "resources/dark/run.png"

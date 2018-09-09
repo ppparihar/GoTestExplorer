@@ -6,6 +6,7 @@ import util = require('util');
 import { GoDocumentSymbolProvider } from './goOutline';
 import { getBinPathWithPreferredGopath } from './goPath';
 import { resolvePath, getCurrentGoPath, getTestEnvVars, LineBuffer } from './utils';
+import { RawTestResult } from '../rawTestResult';
 const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const sendSignal = 'SIGKILL';
 
@@ -15,7 +16,7 @@ const sendSignal = 'SIGKILL';
 const runningTestProcesses: cp.ChildProcess[] = [];
 
 
-let toolsGopath :string;
+let toolsGopath: string;
 const outputChannel = vscode.window.createOutputChannel('Go Test Explorer');
 
 /**
@@ -106,8 +107,8 @@ function resolveToolsGopath(): string {
  *
  * @param goConfig Configuration for the Go extension.
  */
-export function runGoTest(testconfig: TestConfig): Thenable<boolean> {
-	return new Promise<boolean>((resolve, reject) => {
+export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
+	return new Promise<RawTestResult>((resolve, reject) => {
 
 		// We do not want to clear it if tests are already running, as that could
 		// lose valuable output.
@@ -169,11 +170,11 @@ export function runGoTest(testconfig: TestConfig): Thenable<boolean> {
 				testResultLines.push(line);
 				const result = line.match(packageResultLineRE);
 				if (result) {
-				//if (result && currentGoWorkspace) {
-					//const packageNameArr = result[2].split('/');
-					//const baseDir = path.join(currentGoWorkspace, ...packageNameArr);
-					testResultLines.forEach(line => outputChannel.appendLine(expandFilePathInOutput(line, "baseDir")));
-					testResultLines.splice(0);
+					//if (result && currentGoWorkspace) {
+					const packageNameArr = result[2].split('/');
+					const baseDir = path.join(testconfig.dir, ...packageNameArr);
+					testResultLines.forEach(line => outputChannel.appendLine(expandFilePathInOutput(line, baseDir)));
+					//	testResultLines.splice(0);
 				}
 			};
 
@@ -195,7 +196,7 @@ export function runGoTest(testconfig: TestConfig): Thenable<boolean> {
 			tp.stdout.on('data', chunk => outBuf.append(chunk.toString()));
 			tp.stderr.on('data', chunk => errBuf.append(chunk.toString()));
 
-		
+
 
 			tp.on('close', (code, signal) => {
 				outBuf.done();
@@ -216,7 +217,7 @@ export function runGoTest(testconfig: TestConfig): Thenable<boolean> {
 
 
 
-				resolve(code === 0);
+				resolve(new RawTestResult(code === 0, testResultLines));
 			});
 
 			runningTestProcesses.push(tp);
@@ -224,7 +225,7 @@ export function runGoTest(testconfig: TestConfig): Thenable<boolean> {
 		}, err => {
 			outputChannel.appendLine(`Error: ${testType} failed.`);
 			outputChannel.appendLine(err);
-			resolve(false);
+			resolve(new RawTestResult(false, [], err));
 		});
 	});
 }
@@ -252,18 +253,18 @@ function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
 			params = ['-bench', util.format('^%s$', testconfig.functions.join('|'))];
 		} else {
 			let testFunctions = testconfig.functions;
-			
+
 			if (testFunctions.length > 0) {
 				params = params.concat(['-run', util.format('^%s$', testFunctions.join('|'))]);
 			}
-			
+
 		}
 		return Promise.resolve(params);
 	}
 	let params: string[] = [];
 	if (testconfig.isBenchmark) {
 		params = ['-bench', '.'];
-	} 
+	}
 	return Promise.resolve(params);
 }
 

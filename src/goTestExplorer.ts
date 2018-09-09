@@ -21,6 +21,12 @@ export class GoTestExplorer {
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.refreshTestExplorer", () => {
             this.goTestProvider.refreshTestExplorer();
         }));
+        context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.showTestoutput", (testNode: TestNode) => {
+
+            let output = testNode.testResult && testNode.testResult.output && testNode.testResult.output.length > 0 ? testNode.testResult.output.join("\n") : "No output"
+
+            vscode.window.showInformationMessage(output);
+        }));
 
 
         this.goTestProvider.refreshTestExplorer();
@@ -35,9 +41,10 @@ export class GoTestExplorer {
             functions: [testNode.name]
         }
         this.goTestProvider.setLoading(testNode)
-        
+
         let result = await runGoTest(testConfig)
-        this.goTestProvider.updateTestResult(new TestResult(testNode.uri, testNode.name, result))
+        this.goTestProvider.updateTestResult(
+            new TestResult(testNode.uri, testNode.name, result.isPassed, result.output, result.err))
 
 
     }
