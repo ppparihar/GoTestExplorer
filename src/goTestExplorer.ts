@@ -5,7 +5,6 @@ import { runGoTest, getTestFunctions } from './lib/testUtil';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
-import { makeMemoizedByteOffsetConverter } from './lib/utils';
 
 export class GoTestExplorer {
 
