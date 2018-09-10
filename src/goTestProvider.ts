@@ -26,7 +26,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
 		if (!testNode.isTestSuite) {
 			treeItem.command = {
-				command: 'goTestExplorer.runTest',
+				command: 'goTestExplorer.goToLocation',
 				title:testNode.tooltip,
 				arguments: [testNode]
 			};

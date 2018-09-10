@@ -7,7 +7,7 @@ import { GoDocumentSymbolProvider } from './goOutline';
 import { getBinPathWithPreferredGopath } from './goPath';
 import { resolvePath, getCurrentGoPath, getTestEnvVars, LineBuffer } from './utils';
 import { RawTestResult } from '../rawTestResult';
-const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
+//const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const sendSignal = 'SIGKILL';
 
 /**
@@ -60,7 +60,7 @@ export function getTestFunctions(uri: vscode.Uri, token: vscode.CancellationToke
 		.then(symbols =>
 			symbols.filter(sym =>
 				sym.kind === vscode.SymbolKind.Function
-				&& (sym.name.startsWith('Test') || sym.name.startsWith('Example') || testSuiteMethodRegex.test(sym.name))
+				&& (sym.name.startsWith('Test'))
 			)
 		);
 }

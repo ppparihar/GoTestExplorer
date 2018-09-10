@@ -8,7 +8,7 @@
 import vscode = require('vscode');
 import cp = require('child_process');
 import { getBinPath } from './testUtil';
-import { killProcess, getToolsEnvVars, promptForMissingTool, getFileArchive } from './utils';
+import { killProcess, getToolsEnvVars, promptForMissingTool, getFileArchive, makeMemoizedByteOffsetConverter } from './utils';
 //import { getBinPath, getFileArchive, getToolsEnvVars, killProcess, makeMemoizedByteOffsetConverter } from './util';
 
 
@@ -108,10 +108,11 @@ export class GoDocumentSymbolProvider  {
 
 	private convertToCodeSymbols(
 		uri: vscode.Uri,
+		document: vscode.TextDocument,
 		decls: GoOutlineDeclaration[],
 		symbols: vscode.SymbolInformation[],
 		containerName: string,
-	//	byteOffsetToDocumentOffset: (byteOffset: number) => number
+		byteOffsetToDocumentOffset: (byteOffset: number) => number
 		): void {
 
 		let gotoSymbolConfig = vscode.workspace.getConfiguration('go', uri)['gotoSymbol'];
@@ -128,20 +129,20 @@ export class GoDocumentSymbolProvider  {
 				label = '(' + decl.receiverType + ').' + label;
 			}
 
-			//let start = byteOffsetToDocumentOffset(decl.start - 1);
-			//let end = byteOffsetToDocumentOffset(decl.end - 1);
+			let start = byteOffsetToDocumentOffset(decl.start - 1);
+			let end = byteOffsetToDocumentOffset(decl.end - 1);
 
 			let symbolInfo = new vscode.SymbolInformation(
 				label,
 				this.goKindToCodeKind[decl.type],
-				null,
-				//new vscode.Range(document.positionAt(start), document.positionAt(end)),
+			//	null,
+				new vscode.Range(document.positionAt(start), document.positionAt(end)),
 				uri,
 				containerName);
 			symbols.push(symbolInfo);
 			if (decl.children) {
-				this.convertToCodeSymbols(uri, decl.children, symbols, decl.label
-					//, byteOffsetToDocumentOffset
+				this.convertToCodeSymbols(uri,document, decl.children, symbols, decl.label
+					, byteOffsetToDocumentOffset
 				);
 			}
 		});
@@ -149,9 +150,12 @@ export class GoDocumentSymbolProvider  {
 
 	public provideDocumentSymbols( uri :vscode.Uri, token: vscode.CancellationToken): Thenable<vscode.SymbolInformation[]> {
 		let options = { fileName: uri.fsPath };
-		return documentSymbols(options, token).then(decls => {
+		return documentSymbols(options, token).then(async decls => {
 			let symbols: vscode.SymbolInformation[] = [];
-			this.convertToCodeSymbols(uri, decls, symbols, '' //, makeMemoizedByteOffsetConverter(new Buffer(document.getText()))
+			//let document: vscode.TextDocument
+			let document  = await vscode.workspace.openTextDocument(uri)
+			this.convertToCodeSymbols(uri,document, decls, symbols, '' 
+			, makeMemoizedByteOffsetConverter(new Buffer(document.getText()))
 		);
 			return symbols;
 		});

@@ -49,7 +49,7 @@
             "view/item/context": [
                 
                 {
-                  "command": "goTestExplorer.goToLocation",
+                  "command": "goTestExplorer.runTest",
                   "when": "view == goTestExplorer"
                 },
                 {
