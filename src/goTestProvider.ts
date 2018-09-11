@@ -12,8 +12,9 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<TestNode | undefined>();
 	readonly onDidChangeTreeData: vscode.Event<TestNode | undefined> = this._onDidChangeTreeData.event;
 
-	_discoveredTests: TestNode[]
-	constructor( private context: vscode.ExtensionContext, private commands: Commands) {
+	_discoveredTests: TestNode[];
+	private _discovering:boolean;
+	constructor(private context: vscode.ExtensionContext, private commands: Commands) {
 		commands.discoveredTest(this.onDicoveredTest, this)
 	}
 
@@ -30,13 +31,13 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 				title: testNode.tooltip,
 				arguments: [testNode]
 			};
-			treeItem.contextValue = 'tests';
+			treeItem.contextValue = 'test';
 		}
-			treeItem.iconPath = {
-				dark: this.context.asAbsolutePath(path.join("resources", "dark", testNode.icon)),
-				light: this.context.asAbsolutePath(path.join("resources", "light", testNode.icon))
-			}
-		
+		treeItem.iconPath = {
+			dark: this.context.asAbsolutePath(path.join("resources", "dark", testNode.icon)),
+			light: this.context.asAbsolutePath(path.join("resources", "light", testNode.icon))
+		}
+
 
 
 		return treeItem;
@@ -46,7 +47,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		if (testNode) {
 			return Promise.resolve(testNode.children);
 		}
-		if (!this._discoveredTests || this._discoveredTests.length == 0) {
+		if (this._discovering) {
 			return Promise.resolve(
 				[new TestNode("Loading...", null)])
 		}
@@ -56,6 +57,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	refreshTestExplorer() {
 
 		this._discoveredTests = [];
+		this._discovering = true
 		this.refresh();
 
 		const workspaceFolder = vscode.workspace.workspaceFolders.filter(folder => folder.uri.scheme === 'file')[0];
@@ -94,7 +96,8 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		this.refresh();
 	}
 	onDicoveredTest(testNodeList: TestNode[]) {
-		this._discoveredTests = testNodeList
+		this._discovering = false;
+		this._discoveredTests = testNodeList && testNodeList.length > 0 ? testNodeList : []
 	}
 	get discoveredTests(): TestNode[] {
 		return this._discoveredTests;
