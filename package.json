@@ -14,7 +14,7 @@
         "onView:goTestExplorer",
         "onView:fileExplorer"
     ],
-    "main": "./out/src/extension",
+    "main": "./out/extension",
     "contributes": {
         "viewsContainers": {
             "activitybar": [
