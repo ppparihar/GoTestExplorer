@@ -2,7 +2,7 @@
     "name": "gotestexplorer",
     "displayName": "Go Test Explorer",
     "description": "Go Test Explorer",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "publisher": "premparihar",
     "engines": {
         "vscode": "^1.26.0"
@@ -54,7 +54,6 @@
                 {
                     "command": "goTestExplorer.runTest",
                     "when": "viewItem == test"
-                    
                 },
                 {
                     "command": "goTestExplorer.showTestoutput",
@@ -129,8 +128,8 @@
     "repository": {
         "type": "git",
         "url": "https://github.com/ppparihar/GoTestExplorer.git"
-      },
-      "bugs": {
+    },
+    "bugs": {
         "url": "https://github.com/ppparihar/GoTestExplorer/issues"
-      }
+    }
 }
