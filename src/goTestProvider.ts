@@ -22,7 +22,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	}
 
 	getTreeItem(testNode: TestNode): vscode.TreeItem {
-		const treeItem = new vscode.TreeItem(testNode.name, testNode.isTestSuite ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+		const treeItem = new vscode.TreeItem(testNode.name, testNode.isTestSuite ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
 
 		if (!testNode.isTestSuite) {
 			treeItem.command = {
@@ -31,11 +31,12 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 				arguments: [testNode]
 			};
 			treeItem.contextValue = 'tests';
+		}
 			treeItem.iconPath = {
 				dark: this.context.asAbsolutePath(path.join("resources", "dark", testNode.icon)),
 				light: this.context.asAbsolutePath(path.join("resources", "light", testNode.icon))
 			}
-		}
+		
 
 
 		return treeItem;

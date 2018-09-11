@@ -28,10 +28,6 @@ export class GoTestExplorer {
             vscode.window.showInformationMessage(output);
         }));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", (testNode: TestNode) => {
-
-            //  testNode.testResult && testNode.testResult.output && testNode.testResult.output.length > 0 ? testNode.testResult.output.join("\n") : "No output"
-
-            //  vscode.window.showInformationMessage(output);
             this.go(testNode);
         }));
 

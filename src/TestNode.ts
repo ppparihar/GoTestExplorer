@@ -23,7 +23,7 @@ export class TestNode {
 		return this._testResult;
 	}
 	get icon(): string {
-		return this._isLoading ? "spinner.svg" : !this.testResult ? "test.svg" : this.testResult.result ? "testPassed.png" : "testFailed.png"
+		return this._isLoading ? "spinner.svg" : this.isTestSuite ? "testSuit.svg" : !this.testResult ? "test.svg" : this.testResult.result ? "testPassed.svg" : "testFailed.svg"
 	}
 	get children(): TestNode[] {
 		return this._children;
