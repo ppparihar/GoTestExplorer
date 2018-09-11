@@ -12,7 +12,7 @@ export class GoTestExplorer {
     constructor(context: vscode.ExtensionContext) {
 
         const commands = new Commands();
-        this.goTestProvider = new GoTestProvider(vscode.workspace.rootPath, context, commands);
+        this.goTestProvider = new GoTestProvider( context, commands);
 
         vscode.window.registerTreeDataProvider('goTestExplorer', this.goTestProvider);
 

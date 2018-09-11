@@ -13,7 +13,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	readonly onDidChangeTreeData: vscode.Event<TestNode | undefined> = this._onDidChangeTreeData.event;
 
 	_discoveredTests: TestNode[]
-	constructor(private workspaceRoot: string, private context: vscode.ExtensionContext, private commands: Commands) {
+	constructor( private context: vscode.ExtensionContext, private commands: Commands) {
 		commands.discoveredTest(this.onDicoveredTest, this)
 	}
 
@@ -27,7 +27,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		if (!testNode.isTestSuite) {
 			treeItem.command = {
 				command: 'goTestExplorer.goToLocation',
-				title:testNode.tooltip,
+				title: testNode.tooltip,
 				arguments: [testNode]
 			};
 			treeItem.contextValue = 'tests';
@@ -45,7 +45,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		if (testNode) {
 			return Promise.resolve(testNode.children);
 		}
-		if (!this._discoveredTests) {
+		if (!this._discoveredTests || this._discoveredTests.length == 0) {
 			return Promise.resolve(
 				[new TestNode("Loading...", null)])
 		}
@@ -99,7 +99,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		return this._discoveredTests;
 	}
 
-	setLoading(testNode:TestNode){
+	setLoading(testNode: TestNode) {
 		let index = this.discoveredTests.findIndex(s => s.uri === testNode.uri);
 		if (index > -1) {
 			let index2 = this.discoveredTests[index].children.findIndex(t => t.name === testNode.name);
@@ -108,10 +108,10 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		}
 		this.refresh();
 	}
-	setAlloading(){
+	setAlloading() {
 		this.discoveredTests.
-		filter(s => s.children && s.children.length > 0).
-		forEach(s => s.children.forEach(t => t.setLoading()));
+			filter(s => s.children && s.children.length > 0).
+			forEach(s => s.children.forEach(t => t.setLoading()));
 
 		this.refresh();
 	}
