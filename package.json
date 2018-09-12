@@ -9,14 +9,15 @@
     },
     "keywords": [
         "go",
-        "test"
+        "test",
+        "gotest",
+        "unit test"
     ],
     "categories": [
         "Other"
     ],
     "activationEvents": [
-        "onView:goTestExplorer",
-        "onView:fileExplorer"
+        "onView:goTestExplorer"
     ],
     "main": "./out/extension",
     "contributes": {
@@ -127,9 +128,9 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/ppparihar/GoTestExplorer.git"
+        "url": "https://github.com/ppparihar/gotestexplorer.git"
     },
     "bugs": {
-        "url": "https://github.com/ppparihar/GoTestExplorer/issues"
+        "url": "https://github.com/ppparihar/gotestexplorer/issues"
     }
 }
