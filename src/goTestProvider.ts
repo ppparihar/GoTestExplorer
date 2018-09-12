@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from "path";
-
+import fs = require('fs');
 import { getTestFunctions } from './lib/testUtil';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
@@ -13,7 +13,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	readonly onDidChangeTreeData: vscode.Event<TestNode | undefined> = this._onDidChangeTreeData.event;
 
 	_discoveredTests: TestNode[];
-	private _discovering:boolean;
+	private _discovering: boolean;
 	constructor(private context: vscode.ExtensionContext, private commands: Commands) {
 		commands.discoveredTest(this.onDicoveredTest, this)
 	}
@@ -61,11 +61,15 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		this.refresh();
 
 		const workspaceFolder = vscode.workspace.workspaceFolders.filter(folder => folder.uri.scheme === 'file')[0];
-		const uri = workspaceFolder.uri;
-
-		this.discoverTests(uri).catch(err => {
-			console.error(err)
+		let srcLocation = path.join(workspaceFolder.uri.path, "src")
+		fs.exists(srcLocation, (exists) => {
+			srcLocation = exists ? srcLocation : workspaceFolder.uri.path
+			const uri = vscode.Uri.file(srcLocation)
+			this.discoverTests(uri).catch(err => {
+				console.error(err)
+			})
 		})
+
 	}
 
 	async discoverTests(uri: vscode.Uri) {
