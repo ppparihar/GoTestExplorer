@@ -2,7 +2,7 @@
     "name": "gotestexplorer",
     "displayName": "Go Test Explorer",
     "description": "Go Test Explorer",
-    "version": "0.1.0",
+    "version": "0.0.2",
     "publisher": "premparihar",
     "engines": {
         "vscode": "^1.26.0"
