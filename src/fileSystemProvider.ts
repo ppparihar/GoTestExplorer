@@ -263,14 +263,5 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
 		return _.rename(oldUri.fsPath, newUri.fsPath);
 	}
 
-	// tree data provider
 
-	getTreeItem(element: Entry): vscode.TreeItem {
-		const treeItem = new vscode.TreeItem(element.uri, element.type === vscode.FileType.Directory ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-		if (element.type === vscode.FileType.File) {
-			treeItem.command = { command: 'fileExplorer.openFile', title: "Open File", arguments: [element.uri], };
-			treeItem.contextValue = 'file';
-		}
-		return treeItem;
-	}
 }

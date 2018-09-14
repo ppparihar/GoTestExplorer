@@ -11,25 +11,20 @@ export class TestFinder {
         const children = await fileSystemProvider.readDirectory(uri);
         const results = this.filterGoTestFileOrDirectory(children);
         let files = results.filter(([name, type]) => type === vscode.FileType.File)
-                            .map(([name, type]) => ({ name: name, uri: vscode.Uri.file(path.join(uri.fsPath, name)), type }));
+            .map(([name, type]) => ({ name: name, uri: vscode.Uri.file(path.join(uri.fsPath, name)), type }));
 
 
         let resultfiles = results.filter(([name, type]) => type === vscode.FileType.Directory)
         if (resultfiles.length == 0) {
             return Promise.resolve(files);
         }
-        var promises = resultfiles.map(([name, type]) => {
-            return this.getGoTestFiles(vscode.Uri.file(path.join(uri.fsPath, name)))
+        var promises = resultfiles.map(([name, type]) =>
+            this.getGoTestFiles(vscode.Uri.file(path.join(uri.fsPath, name))))
+            
+        return Promise.all(promises).then(results => {
 
-        })
-        return Promise.all(promises).then(function (results) {
-            results.forEach(element => {
-                element.forEach(item => {
-                    files.push(item)
-                })
-
-            });
-            return Promise.resolve(files);
+            let output = results.map(r => [].concat(...r));
+            return Promise.resolve(files.concat(...output));
         })
 
 
