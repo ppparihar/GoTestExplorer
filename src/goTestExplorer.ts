@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import path = require('path');
+import * as path from 'path';
 import { GoTestProvider } from './goTestProvider';
 import { runGoTest, getTestFunctions } from './lib/testUtil';
 import { TestNode } from './testNode';
@@ -24,14 +24,10 @@ export class GoTestExplorer {
             testDiscoverer.discoverAllTests();
         }));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.showTestoutput", (testNode: TestNode) => {
-
-            let output = testNode.testResult && testNode.testResult.output && testNode.testResult.output.length > 0 ? testNode.testResult.output.join("\n") : "No output"
-
+            let output = testNode.testResult && testNode.testResult.output && testNode.testResult.output.length > 0 ? testNode.testResult.output.join("\n") : "No output";
             vscode.window.showInformationMessage(output);
         }));
-        context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", (testNode: TestNode) => {
-            this.go(testNode);
-        }));
+        context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", this.go.bind(this)));
 
 
         testDiscoverer.discoverAllTests();
