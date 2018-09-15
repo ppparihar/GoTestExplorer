@@ -5,21 +5,23 @@ import { runGoTest, getTestFunctions } from './lib/testUtil';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
+import { TestDiscovery } from './testDiscovery';
 
 export class GoTestExplorer {
 
     goTestProvider: GoTestProvider;
+    readonly commands: Commands;
     constructor(context: vscode.ExtensionContext) {
 
-        const commands = new Commands();
-        this.goTestProvider = new GoTestProvider( context, commands);
-
+        this.commands = new Commands();
+        this.goTestProvider = new GoTestProvider(context, this.commands);
+        const testDiscoverer = new TestDiscovery(this.commands);
         vscode.window.registerTreeDataProvider('goTestExplorer', this.goTestProvider);
 
         context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTest', this.onRunSingleTest.bind(this)));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.runAllTest", this.onRunAllTests.bind(this)));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.refreshTestExplorer", () => {
-            this.goTestProvider.refreshTestExplorer();
+            testDiscoverer.discoverAllTests();
         }));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.showTestoutput", (testNode: TestNode) => {
 
@@ -32,28 +34,26 @@ export class GoTestExplorer {
         }));
 
 
-        this.goTestProvider.refreshTestExplorer();
+        testDiscoverer.discoverAllTests();
 
     }
     async onRunSingleTest(testNode: TestNode) {
 
-        let testConfig = {
+        const testConfig = {
             dir: path.dirname(testNode.uri.fsPath),
             goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
             flags: [""],
             functions: [testNode.name]
         }
-        this.goTestProvider.setLoading(testNode)
+        this.commands.sendTestRunStarted(testNode);
+        const result = await runGoTest(testConfig);
 
-        let result = await runGoTest(testConfig)
-        this.goTestProvider.updateTestResult(
+        this.commands.sendTestResult(
             new TestResult(testNode.uri, testNode.name, result.isPassed, result.output, result.err))
-
 
     }
 
     onRunAllTests() {
-        this.goTestProvider.setAlloading();
         this.goTestProvider.discoveredTests.
             filter(s => s.children && s.children.length > 0).
             forEach(s => s.children.forEach(t => this.onRunSingleTest(t)))
