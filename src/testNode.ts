@@ -1,6 +1,7 @@
 
 import vscode = require('vscode');
 import { TestResult } from './testResult';
+import { Icons } from './icons';
 export class TestNode {
 	private _testResult: TestResult;
 	private _isLoading: boolean;
@@ -23,7 +24,11 @@ export class TestNode {
 		return this._testResult;
 	}
 	get icon(): string {
-		return this._isLoading ? "spinner.svg" : this.isTestSuite ? "testSuit.svg" : !this.testResult ? "test.svg" : this.testResult.result ? "testPassed.svg" : "testFailed.svg"
+		return this._isLoading ? Icons.loading :
+			this.isTestSuite ? Icons.testSuit :
+				!this.testResult ? Icons.test :
+					this.testResult.result ? Icons.testPassed :
+						Icons.testFailed
 	}
 	get children(): TestNode[] {
 		return this._children;

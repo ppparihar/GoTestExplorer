@@ -1,11 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from "path";
-import fs = require('fs');
-import { getTestFunctions } from './lib/testUtil';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
-import { TestFinder } from './testFinder';
+
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
@@ -14,11 +12,14 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
 	_discoveredTests: TestNode[];
 	private _discovering: boolean;
-	constructor(private context: vscode.ExtensionContext, private commands: Commands) {
-		commands.discoveredTest(this.onDicoveredTest, this)
+	constructor(private context: vscode.ExtensionContext, commands: Commands) {
+		context.subscriptions.push(commands.discoveredTest(this.onDicoveredTest, this));
+		context.subscriptions.push(commands.testDiscoveryStarted(this.onDiscoverTestStart, this));
+		context.subscriptions.push(commands.testResult(this.updateTestResult, this));
+		context.subscriptions.push(commands.testRunStarted(this.onTestRunStarted, this))
 	}
 
-	refresh(): void {
+	private refresh(): void {
 		this._onDidChangeTreeData.fire();
 	}
 
@@ -53,43 +54,11 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		}
 		return Promise.resolve(this._discoveredTests)
 	}
-
-	refreshTestExplorer() {
-
-		this._discoveredTests = [];
-		this._discovering = true
-		this.refresh();
-
-		const workspaceFolder = vscode.workspace.workspaceFolders.filter(folder => folder.uri.scheme === 'file')[0];
-		let srcLocation = path.join(workspaceFolder.uri.path, "src")
-		fs.exists(srcLocation, (exists) => {
-			srcLocation = exists ? srcLocation : workspaceFolder.uri.path
-			const uri = vscode.Uri.file(srcLocation)
-			this.discoverTests(uri).catch(err => {
-				console.error(err)
-			})
-		})
-
+	get discoveredTests(): TestNode[] {
+		return this._discoveredTests;
 	}
 
-	async discoverTests(uri: vscode.Uri) {
-		const items = await TestFinder.getGoTestFiles(uri);
-		let promises = items.map(async item => {
-			let suite = new TestNode(item.name, item.uri)
-			let symbols = await getTestFunctions(suite.uri, null)
-
-			symbols = symbols.sort((a, b) => a.name.localeCompare(b.name));
-			let nodeList = symbols.map(symbol => new TestNode(`${symbol.name}`, suite.uri))
-			return new TestNode(suite.name, suite.uri, nodeList)
-		});
-
-		Promise.all(promises).then(testNodeList => {
-			this.commands.sendDiscoveredTests([].concat(...testNodeList))
-			this.refresh();
-		})
-	}
-
-	updateTestResult(testResult: TestResult) {
+	private updateTestResult(testResult: TestResult) {
 
 		let index = this.discoveredTests.findIndex(s => s.uri === testResult.uri);
 		if (index > -1) {
@@ -99,15 +68,20 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		}
 		this.refresh();
 	}
-	onDicoveredTest(testNodeList: TestNode[]) {
+	private onDiscoverTestStart() {
+		this._discoveredTests = [];
+		this._discovering = true
+		this.refresh();
+	}
+	private onDicoveredTest(testNodeList: TestNode[]) {
+		this._discoveredTests = testNodeList && testNodeList.length > 0 ? testNodeList : [];
 		this._discovering = false;
-		this._discoveredTests = testNodeList && testNodeList.length > 0 ? testNodeList : []
+		this.refresh();
 	}
-	get discoveredTests(): TestNode[] {
-		return this._discoveredTests;
+	private onTestRunStarted(testNode: TestNode) {
+		testNode ? this.setLoading(testNode) : this.setAlloading()
 	}
-
-	setLoading(testNode: TestNode) {
+	private setLoading(testNode: TestNode) {
 		let index = this.discoveredTests.findIndex(s => s.uri === testNode.uri);
 		if (index > -1) {
 			let index2 = this.discoveredTests[index].children.findIndex(t => t.name === testNode.name);
@@ -116,7 +90,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		}
 		this.refresh();
 	}
-	setAlloading() {
+	private setAlloading() {
 		this.discoveredTests.
 			filter(s => s.children && s.children.length > 0).
 			forEach(s => s.children.forEach(t => t.setLoading()));
