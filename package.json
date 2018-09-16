@@ -132,5 +132,13 @@
     },
     "bugs": {
         "url": "https://github.com/ppparihar/gotestexplorer/issues"
-    }
+    },
+    "badges": [
+        {
+            "url": "https://travis-ci.org/ppparihar/GoTestExplorer.svg?branch=master",
+            "href": "https://travis-ci.org/ppparihar/GoTestExplorer",
+            "description": "Continuous integration (Travis)"
+        }
+    ],
+    "icon": "media/icon.png"
 }
