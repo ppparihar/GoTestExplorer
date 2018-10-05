@@ -6,6 +6,7 @@ import { getTestFunctions } from "./lib/testUtil";
 import { Commands } from "./commands";
 import { Entry } from "./entry";
 import { FileSystemProvider } from "./fileSystemProvider";
+import { Config } from "./config";
 
 export class TestDiscovery {
 
@@ -51,7 +52,10 @@ export class TestDiscovery {
             .map(([name, type]) => ({ name: name, uri: vscode.Uri.file(path.join(uri.fsPath, name)), type }));
 
 
-        let resultfiles = results.filter(([name, type]) => type === vscode.FileType.Directory)
+        let resultfiles = results.filter(([name, type]) => {
+            const basename = path.basename(name);
+          return  type === vscode.FileType.Directory && Config.SkipFolders.indexOf(basename) == -1
+        })
         if (resultfiles.length == 0) {
             return Promise.resolve(files);
         }
