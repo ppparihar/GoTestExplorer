@@ -19,8 +19,8 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		context.subscriptions.push(commands.testRunStarted(this.onTestRunStarted, this))
 	}
 
-	private refresh(): void {
-		this._onDidChangeTreeData.fire();
+	private refresh(testNode?: TestNode): void {
+		this._onDidChangeTreeData.fire(testNode);
 	}
 
 	getTreeItem(testNode: TestNode): vscode.TreeItem {
@@ -62,12 +62,16 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	private updateTestResult(testResult: TestResult) {
 
 		let index = this.discoveredTests.findIndex(s => s.uri === testResult.uri);
+		var testNode :TestNode= null
 		if (index > -1) {
 			let index2 = this.discoveredTests[index].children.findIndex(t => t.name === testResult.testName);
-			if (index2 > -1)
-				this.discoveredTests[index].children[index2].testResult = testResult;
+			if (index2 > -1){
+				testNode = this.discoveredTests[index].children[index2];
+				testNode.testResult = testResult;
+			}
+				
 		}
-		this.refresh();
+		this.refresh(testNode);
 	}
 	private onDiscoverTestStart() {
 		this._discoveredTests = [];
@@ -89,7 +93,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 			if (index2 > -1)
 				this.discoveredTests[index].children[index2].setLoading();
 		}
-		this.refresh();
+		this.refresh(testNode);
 	}
 	private setAlloading() {
 		this.discoveredTests.
