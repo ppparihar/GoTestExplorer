@@ -1,7 +1,6 @@
 # Change Log
-All notable changes to the "hello-vs" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
-- Initial release
+## [V0.1.4]
+- Run all test from test suite at right click
+- Improved performance of loading test result 
