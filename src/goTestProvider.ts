@@ -26,20 +26,21 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	getTreeItem(testNode: TestNode): vscode.TreeItem {
 		const treeItem = new vscode.TreeItem(testNode.name, testNode.isTestSuite ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
 
+		treeItem.contextValue = this._discovering ? 'discovering' : testNode.isTestSuite ? 'testSuite' : 'test'
+
 		if (!testNode.isTestSuite) {
 			treeItem.command = {
 				command: 'goTestExplorer.goToLocation',
 				title: testNode.tooltip,
 				arguments: [testNode]
 			};
-			treeItem.contextValue = 'test';
+
 		}
+
 		treeItem.iconPath = {
 			dark: this.context.asAbsolutePath(path.join("resources", "dark", testNode.icon)),
 			light: this.context.asAbsolutePath(path.join("resources", "light", testNode.icon))
 		}
-
-
 
 		return treeItem;
 	}
@@ -62,7 +63,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
 		let index = this.discoveredTests.findIndex(s => s.uri === testResult.uri);
 		if (index > -1) {
-			let index2 = this.discoveredTests[index].children.findIndex(t => t.name === testResult.functionName);
+			let index2 = this.discoveredTests[index].children.findIndex(t => t.name === testResult.testName);
 			if (index2 > -1)
 				this.discoveredTests[index].children[index2].testResult = testResult;
 		}

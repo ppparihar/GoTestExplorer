@@ -3,7 +3,7 @@ export class TestResult {
 
     constructor(
         public uri: vscode.Uri,
-        public functionName: string,
+        public testName: string,
         public result: boolean,
         public output: string[],
         public error?: Error

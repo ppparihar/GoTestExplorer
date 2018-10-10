@@ -18,6 +18,7 @@ export class GoTestExplorer {
         const testDiscoverer = new TestDiscovery(this.commands);
         vscode.window.registerTreeDataProvider('goTestExplorer', this.goTestProvider);
 
+
         context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTest', this.onRunSingleTest.bind(this)));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.runAllTest", this.onRunAllTests.bind(this)));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.refreshTestExplorer", () => {
@@ -28,7 +29,11 @@ export class GoTestExplorer {
             vscode.window.showInformationMessage(output);
         }));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", this.go.bind(this)));
-
+        context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', (testNode:TestNode)=>{
+           
+           if(testNode.children)
+            testNode.children.forEach(t => this.onRunSingleTest(t))
+        }));
 
         testDiscoverer.discoverAllTests();
 
