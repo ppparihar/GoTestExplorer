@@ -10,6 +10,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<TestNode | undefined>();
 	readonly onDidChangeTreeData: vscode.Event<TestNode | undefined> = this._onDidChangeTreeData.event;
 
+	__discoveredTestsMap: Map<string, TestNode>;
 	_discoveredTests: TestNode[];
 	private _discovering: boolean;
 	constructor(private context: vscode.ExtensionContext, commands: Commands) {
@@ -61,15 +62,9 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
 	private updateTestResult(testResult: TestResult) {
 
-		let index = this.discoveredTests.findIndex(s => s.uri === testResult.uri);
-		var testNode :TestNode= null
-		if (index > -1) {
-			let index2 = this.discoveredTests[index].children.findIndex(t => t.name === testResult.testName);
-			if (index2 > -1){
-				testNode = this.discoveredTests[index].children[index2];
-				testNode.testResult = testResult;
-			}
-				
+		let testNode = this.__discoveredTestsMap.get(this.getNodeKey(testResult.uri.fsPath, testResult.testName))
+		if (testNode) {
+			testNode.testResult = testResult;
 		}
 		this.refresh(testNode);
 	}
@@ -80,6 +75,17 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	}
 	private onDicoveredTest(testNodeList: TestNode[]) {
 		this._discoveredTests = testNodeList && testNodeList.length > 0 ? testNodeList : [];
+
+		this.__discoveredTestsMap = new Map();
+		this._discoveredTests.forEach(x => {
+			if (x.children && x.children.length > 0) {
+				x.children.forEach(node => {
+					this.__discoveredTestsMap.set(this.getNodeKey(node.uri.fsPath, node.name), node)
+				})
+			}
+
+		})
+
 		this._discovering = false;
 		this.refresh();
 	}
@@ -87,11 +93,10 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		testNode ? this.setLoading(testNode) : this.setAlloading()
 	}
 	private setLoading(testNode: TestNode) {
-		let index = this.discoveredTests.findIndex(s => s.uri === testNode.uri);
-		if (index > -1) {
-			let index2 = this.discoveredTests[index].children.findIndex(t => t.name === testNode.name);
-			if (index2 > -1)
-				this.discoveredTests[index].children[index2].setLoading();
+
+		let tempNode = this.__discoveredTestsMap.get(this.getNodeKey(testNode.uri.fsPath, testNode.name))
+		if (tempNode) {
+			tempNode.setLoading();
 		}
 		this.refresh(testNode);
 	}
@@ -101,6 +106,9 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 			forEach(s => s.children.forEach(t => t.setLoading()));
 
 		this.refresh();
+	}
+	private getNodeKey(uri: string, nodeName: string): string {
+		return uri + "__" + nodeName
 	}
 }
 

@@ -34,7 +34,7 @@
             "testExplorer": [
                 {
                     "id": "goTestExplorer",
-                    "name": "Go Test Explorer"
+                    "name": "Test"
                 }
             ]
         },
