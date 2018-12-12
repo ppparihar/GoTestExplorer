@@ -14,13 +14,13 @@ export class Commands {
         return this.onTestDiscoveryFinishedEmitter.event;
     }
     public sendDiscoveredTests(testNodeList: TestNode[]) {
-        this.onTestDiscoveryFinishedEmitter.fire(testNodeList)
+        this.onTestDiscoveryFinishedEmitter.fire(testNodeList);
     }
     public get testDiscoveryStarted(): Event<void> {
         return this.onTestDiscoveryStartedEmitter.event;
     }
     public sendTestDiscoveryStarted() {
-        this.onTestDiscoveryStartedEmitter.fire()
+        this.onTestDiscoveryStartedEmitter.fire();
 
     }
     public get testRunStarted(): Event<TestNode> {
@@ -36,9 +36,9 @@ export class Commands {
         this.onTestResultEmitter.fire(testResult)
     }
     public get testCompleted(): Event<void> {
-        return this.onTestCompletedEmitter.event
+        return this.onTestCompletedEmitter.event;
     }
     public sendTestCompleted() {
-        this.onTestCompletedEmitter.fire()
+        this.onTestCompletedEmitter.fire();
     }
 }
