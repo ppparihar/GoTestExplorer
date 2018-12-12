@@ -51,6 +51,10 @@ export interface TestConfig {
 	 * Whether this is a benchmark.
 	 */
 	isBenchmark?: boolean;
+
+	testUri: vscode.Uri;
+
+	testName: string;
 }
 
 export function getTestFunctions(uri: vscode.Uri, token: vscode.CancellationToken): Thenable<vscode.SymbolInformation[]> {

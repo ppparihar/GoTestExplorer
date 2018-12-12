@@ -1,19 +1,23 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { GoTestProvider } from './goTestProvider';
-import { runGoTest, getTestFunctions } from './lib/testUtil';
+import { runGoTest, getTestFunctions, TestConfig } from './lib/testUtil';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { TestDiscovery } from './testDiscovery';
+import { Config } from './config';
 
 export class GoTestExplorer {
 
     goTestProvider: GoTestProvider;
+    testBuffer: TestConfig[];
+    count: number = 0;
+
     readonly commands: Commands;
     constructor(context: vscode.ExtensionContext) {
-
         this.commands = new Commands();
+        this.testBuffer = [];
         this.goTestProvider = new GoTestProvider(context, this.commands);
         const testDiscoverer = new TestDiscovery(this.commands);
         vscode.window.registerTreeDataProvider('goTestExplorer', this.goTestProvider);
@@ -29,29 +33,49 @@ export class GoTestExplorer {
             vscode.window.showInformationMessage(output);
         }));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", this.go.bind(this)));
-        context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', (testNode:TestNode)=>{
-           
-           if(testNode.children)
-            testNode.children.forEach(t => this.onRunSingleTest(t))
-        }));
+        context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', (testNode: TestNode) => {
 
+            if (testNode.children)
+                testNode.children.forEach(t => this.onRunSingleTest(t))
+        }));
+        context.subscriptions.push(this.commands.testCompleted(this.onTestCompleted, this));
         testDiscoverer.discoverAllTests();
 
     }
     async onRunSingleTest(testNode: TestNode) {
+        this.commands.sendTestRunStarted(testNode);
 
         const testConfig = {
             dir: path.dirname(testNode.uri.fsPath),
             goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
             flags: [""],
-            functions: [testNode.name]
+            functions: [testNode.name],
+            testUri: testNode.uri,
+            testName: testNode.name
         }
-        this.commands.sendTestRunStarted(testNode);
+        this.pushToBuffer(testConfig);
+    }
+
+    pushToBuffer(testConfig: TestConfig) {
+
+        this.testBuffer.push(testConfig);
+        this.commands.sendTestCompleted()
+    }
+
+    private async processTestBuffer() {
+        if (this.testBuffer.length <= 0 || this.count > Config.RunMaxParallelTest) {
+            return;
+        }
+        const testConfig = this.testBuffer.shift();
+        this.count++;
         const result = await runGoTest(testConfig);
-
         this.commands.sendTestResult(
-            new TestResult(testNode.uri, testNode.name, result.isPassed, result.output, result.err))
-
+            new TestResult(testConfig.testUri, testConfig.testName, result.isPassed, result.output, result.err));
+        this.count--;
+        this.commands.sendTestCompleted()
+    }
+    private onTestCompleted() {
+        this.processTestBuffer();
     }
 
     onRunAllTests() {
