@@ -35,8 +35,9 @@ export class GoTestExplorer {
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", this.go.bind(this)));
         context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', (testNode: TestNode) => {
 
-            if (testNode.children)
+            if (testNode.children) {
                 testNode.children.forEach(t => this.onRunSingleTest(t))
+            }
         }));
         context.subscriptions.push(this.commands.testCompleted(this.onTestCompleted, this));
         testDiscoverer.discoverAllTests();

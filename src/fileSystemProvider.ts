@@ -145,9 +145,9 @@ export class FileStat implements vscode.FileStat {
 }
 
 export interface Entry {
-	name: string,
-	uri: vscode.Uri,
-	type: vscode.FileType
+	name: string;
+	uri: vscode.Uri;
+	type: vscode.FileType;
 }
 
 //#endregion
