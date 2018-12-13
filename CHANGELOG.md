@@ -1,7 +1,7 @@
 # Change Log
 
 ## V0.1.7
-- Added parallel test exuction limit to improve extention performance
+- Added parallel test execution limit to improve extention performance
 
 ## V0.1.5
 - Improved performance of test loader
