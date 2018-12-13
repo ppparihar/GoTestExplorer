@@ -27,18 +27,18 @@ export class Commands {
         return this.onTestRunStartedEmitter.event;
     }
     public sendTestRunStarted(testNode: TestNode) {
-        this.onTestRunStartedEmitter.fire(testNode)
+        this.onTestRunStartedEmitter.fire(testNode);
     }
     public get testResult(): Event<TestResult> {
         return this.onTestResultEmitter.event;
     }
     public sendTestResult(testResult: TestResult) {
-        this.onTestResultEmitter.fire(testResult)
+        this.onTestResultEmitter.fire(testResult);
     }
     public get testCompleted(): Event<void> {
         return this.onTestCompletedEmitter.event;
     }
-    public sendTestCompleted() {
+    public sendTestCompleted() :void {
         this.onTestCompletedEmitter.fire();
     }
 }
