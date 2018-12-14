@@ -53,14 +53,14 @@ export class GoTestExplorer {
             functions: [testNode.name],
             testUri: testNode.uri,
             testName: testNode.name
-        }
+        };
         this.pushToBuffer(testConfig);
     }
 
     pushToBuffer(testConfig: TestConfig) {
 
         this.testBuffer.push(testConfig);
-        this.commands.sendTestCompleted()
+        this.processTestBuffer();
     }
 
     private async processTestBuffer() {
@@ -70,10 +70,11 @@ export class GoTestExplorer {
         const testConfig = this.testBuffer.shift();
         this.count++;
         const result = await runGoTest(testConfig);
+        this.count--;
         this.commands.sendTestResult(
             new TestResult(testConfig.testUri, testConfig.testName, result.isPassed, result.output, result.err));
-        this.count--;
-        this.commands.sendTestCompleted()
+        
+        this.commands.sendTestCompleted();
     }
     private onTestCompleted() {
         this.processTestBuffer();
