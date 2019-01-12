@@ -83,7 +83,7 @@ export class GoTestExplorer {
     onRunAllTests() {
         this.goTestProvider.discoveredTests.
             filter(s => s.children && s.children.length > 0).
-            forEach(s => s.children.forEach(t => this.onRunSingleTest(t)))
+            forEach(s => s.children.forEach(t => this.onRunSingleTest(t)));
     }
 
     public async go(testNode: TestNode): Promise<void> {

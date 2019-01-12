@@ -83,7 +83,6 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 					this.__discoveredTestsMap.set(this.getNodeKey(node.uri.fsPath, node.name), node);
 				});
 			}
-
 		});
 
 		this._discovering = false;
