@@ -170,7 +170,7 @@ export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
 			const packageResultLineRE = /^(ok|--- FAIL:)[ \t]+(.+?)[ \t]+(\([0-9\.]+s\)|\(cached\))/; // 1=ok/FAIL, 2=package, 3=time/(cached)
 			//const packageResultLineRE = /^(ok|FAIL)[ \t]+(.+?)[ \t]+([0-9\.]+s|\(cached\))/; // 1=ok/FAIL, 2=package, 3=time/(cached)
 			const testResultLines: string[] = [];
-			const failedTests: string[] = []
+			const failedTests: string[] = [];
 			const processTestResultLine = (line: string) => {
 				testResultLines.push(line);
 				const result = line.match(packageResultLineRE);
@@ -178,7 +178,7 @@ export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
 					failedTests.push(result[2]);
 					//if (result && currentGoWorkspace) {
 					//const packageNameArr = result[2].split('/');
-				//	const baseDir = path.join(testconfig.dir, ...packageNameArr);
+					//	const baseDir = path.join(testconfig.dir, ...packageNameArr);
 					//testResultLines.forEach(line => outputChannel.appendLine(expandFilePathInOutput(line, baseDir)));
 					//	testResultLines.splice(0);
 				}
