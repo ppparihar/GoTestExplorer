@@ -40,17 +40,16 @@ export class GoTestExplorer {
     }
     async onRunSingleTest(testNode: TestNode) {
         this.commands.sendTestRunStarted(testNode);
-        const testConfig = this.getTestConfig(testNode);
+        const testConfig = this.buildTestConfig(testNode);
         this.pushToBuffer(testConfig);
     }
     private runTestSuite(testNode: TestNode) {
         if (testNode.children.length === 0) {
             return;
         }
-
         testNode.children.forEach(t => this.commands.sendTestRunStarted(t));
 
-        const testConfig = this.getTestConfig(testNode);
+        const testConfig = this.buildTestConfig(testNode);
         this.pushToBuffer(testConfig);
     }
 
@@ -59,8 +58,8 @@ export class GoTestExplorer {
             filter(s => s.isTestSuite).
             forEach(t => this.runTestSuite(t));
     }
-    private getTestConfig(testNode: TestNode) {
-
+    
+    private buildTestConfig(testNode: TestNode)  : TestConfig{
         let tests = testNode.children.map(node => node.name);
         tests = tests.length > 0 ? tests : [testNode.name];
         const testConfig = {
@@ -71,9 +70,9 @@ export class GoTestExplorer {
             testUri: testNode.uri,
             testName: testNode.name
         };
-
         return testConfig;
     }
+
     private pushToBuffer(testConfig: TestConfig) {
 
         this.testBuffer.push(testConfig);

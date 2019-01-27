@@ -35,9 +35,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 				title: testNode.tooltip,
 				arguments: [testNode]
 			};
-
 		}
-
 		treeItem.iconPath = {
 			dark: this.context.asAbsolutePath(path.join("resources", "dark", testNode.icon)),
 			light: this.context.asAbsolutePath(path.join("resources", "light", testNode.icon))
