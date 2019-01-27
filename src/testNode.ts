@@ -25,13 +25,32 @@ export class TestNode {
 	}
 	get icon(): string {
 		return this._isLoading ? Icons.loading :
-			this.isTestSuite ? Icons.testSuit :
+			this.isTestSuite ? this.getTestSuiteIcon :
 				!this.testResult ? Icons.test :
-					this.testResult.result ? Icons.testPassed :
+					this.testResult.isPassed ? Icons.testPassed :
 						Icons.testFailed;
 	}
 	get children(): TestNode[] {
 		return this._children ? this._children : [];
+	}
+	get isLoading(): boolean {
+		return this._isLoading;
+	}
+	private get getTestSuiteIcon() {
+		if (this.children.filter(x => x.isLoading).length > 0) {
+			return Icons.loading;
+		}
+		for (let index = 0; index < this.children.length; index++) {
+			const testResult = this.children[index].testResult;
+			if (!testResult) {
+				return Icons.testSuite;
+			}
+			if (!testResult.isPassed) {
+				return Icons.testSuiteFailed;
+			}
+		}
+		return Icons.testSuitePassed;
+
 	}
 	setLoading() {
 		this._isLoading = true;

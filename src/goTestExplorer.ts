@@ -41,6 +41,8 @@ export class GoTestExplorer {
     async onRunSingleTest(testNode: TestNode) {
         this.commands.sendTestRunStarted(testNode);
         const testConfig = this.buildTestConfig(testNode);
+        const testSuite = new TestNode(testConfig.testName, testConfig.testUri);
+        this.commands.sendTestRunStarted(testSuite);
         this.pushToBuffer(testConfig);
     }
     private runTestSuite(testNode: TestNode) {
@@ -48,7 +50,7 @@ export class GoTestExplorer {
             return;
         }
         testNode.children.forEach(t => this.commands.sendTestRunStarted(t));
-
+        this.commands.sendTestRunStarted(testNode);
         const testConfig = this.buildTestConfig(testNode);
         this.pushToBuffer(testConfig);
     }
@@ -58,8 +60,8 @@ export class GoTestExplorer {
             filter(s => s.isTestSuite).
             forEach(t => this.runTestSuite(t));
     }
-    
-    private buildTestConfig(testNode: TestNode)  : TestConfig{
+
+    private buildTestConfig(testNode: TestNode): TestConfig {
         let tests = testNode.children.map(node => node.name);
         tests = tests.length > 0 ? tests : [testNode.name];
         const testConfig = {
@@ -68,7 +70,7 @@ export class GoTestExplorer {
             flags: [""],
             functions: tests,
             testUri: testNode.uri,
-            testName: testNode.name
+            testName: path.basename(testNode.uri.fsPath)
         };
         return testConfig;
     }
@@ -87,21 +89,24 @@ export class GoTestExplorer {
         this.count++;
         const result = await runGoTest(testConfig);
         this.count--;
+
+        let isTestSuitePassed = true;
         testConfig.functions.forEach(t => {
             let isTestPassed = true;
             if (result.isPassed === false && (!result.failedTests || result.failedTests.length === 0 || result.failedTests.indexOf(t) !== -1)) {
                 isTestPassed = false;
+                isTestSuitePassed = false;
             }
             this.commands.sendTestResult(new TestResult(testConfig.testUri, t, isTestPassed, result.output, result.err));
         });
 
+        this.commands.sendTestResult(new TestResult(testConfig.testUri, testConfig.testName, isTestSuitePassed, result.output, result.err));
         this.commands.sendTestCompleted();
     }
+
     private onTestCompleted() {
         this.processTestBuffer();
     }
-
-
 
     public async go(testNode: TestNode): Promise<void> {
 
@@ -130,6 +135,7 @@ export class GoTestExplorer {
 
 
     }
+
     public findTestLocation(symbols: vscode.SymbolInformation[], testNode: TestNode): vscode.SymbolInformation {
 
         if (symbols.length === 0) {
