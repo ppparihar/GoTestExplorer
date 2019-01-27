@@ -31,7 +31,7 @@ export class TestNode {
 						Icons.testFailed;
 	}
 	get children(): TestNode[] {
-		return this._children;
+		return this._children ? this._children : [];
 	}
 	setLoading() {
 		this._isLoading = true;

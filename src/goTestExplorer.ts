@@ -33,45 +33,48 @@ export class GoTestExplorer {
             vscode.window.showInformationMessage(output);
         }));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", this.go.bind(this)));
-        context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', (testNode: TestNode) => {
-
-            if (!testNode.children) {
-                return;
-            }
-
-            testNode.children.forEach(t => this.commands.sendTestRunStarted(t));
-
-            let tests = testNode.children.map(node => node.name) || [];
-            const testConfig = {
-                dir: path.dirname(testNode.uri.fsPath),
-                goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
-                flags: [""],
-                functions: tests,
-                testUri: testNode.uri,
-                testName: testNode.name
-            };
-            this.pushToBuffer(testConfig);
-
-        }));
+        context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', this.runTestSuite.bind(this)));
         context.subscriptions.push(this.commands.testCompleted(this.onTestCompleted, this));
         testDiscoverer.discoverAllTests();
 
     }
     async onRunSingleTest(testNode: TestNode) {
         this.commands.sendTestRunStarted(testNode);
+        const testConfig = this.getTestConfig(testNode);
+        this.pushToBuffer(testConfig);
+    }
+    private runTestSuite(testNode: TestNode) {
+        if (testNode.children.length === 0) {
+            return;
+        }
 
+        testNode.children.forEach(t => this.commands.sendTestRunStarted(t));
+
+        const testConfig = this.getTestConfig(testNode);
+        this.pushToBuffer(testConfig);
+    }
+
+    private onRunAllTests() {
+        this.goTestProvider.discoveredTests.
+            filter(s => s.isTestSuite).
+            forEach(t => this.runTestSuite(t));
+    }
+    private getTestConfig(testNode: TestNode) {
+
+        let tests = testNode.children.map(node => node.name);
+        tests = tests.length > 0 ? tests : [testNode.name];
         const testConfig = {
             dir: path.dirname(testNode.uri.fsPath),
             goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
             flags: [""],
-            functions: [testNode.name],
+            functions: tests,
             testUri: testNode.uri,
             testName: testNode.name
         };
-        this.pushToBuffer(testConfig);
-    }
 
-    pushToBuffer(testConfig: TestConfig) {
+        return testConfig;
+    }
+    private pushToBuffer(testConfig: TestConfig) {
 
         this.testBuffer.push(testConfig);
         this.processTestBuffer();
@@ -99,11 +102,7 @@ export class GoTestExplorer {
         this.processTestBuffer();
     }
 
-    onRunAllTests() {
-        this.goTestProvider.discoveredTests.
-            filter(s => s.children && s.children.length > 0).
-            forEach(s => s.children.forEach(t => this.onRunSingleTest(t)));
-    }
+
 
     public async go(testNode: TestNode): Promise<void> {
 
