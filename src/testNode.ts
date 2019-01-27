@@ -28,7 +28,7 @@ export class TestNode {
 			this.isTestSuite ? Icons.testSuit :
 				!this.testResult ? Icons.test :
 					this.testResult.result ? Icons.testPassed :
-						Icons.testFailed
+						Icons.testFailed;
 	}
 	get children(): TestNode[] {
 		return this._children;

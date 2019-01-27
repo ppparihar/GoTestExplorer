@@ -35,9 +35,23 @@ export class GoTestExplorer {
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", this.go.bind(this)));
         context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', (testNode: TestNode) => {
 
-            if (testNode.children) {
-                testNode.children.forEach(t => this.onRunSingleTest(t))
+            if (!testNode.children) {
+                return;
             }
+
+            testNode.children.forEach(t => this.commands.sendTestRunStarted(t));
+
+            let tests = testNode.children.map(node => node.name) || [];
+            const testConfig = {
+                dir: path.dirname(testNode.uri.fsPath),
+                goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
+                flags: [""],
+                functions: tests,
+                testUri: testNode.uri,
+                testName: testNode.name
+            };
+            this.pushToBuffer(testConfig);
+
         }));
         context.subscriptions.push(this.commands.testCompleted(this.onTestCompleted, this));
         testDiscoverer.discoverAllTests();
@@ -71,9 +85,14 @@ export class GoTestExplorer {
         this.count++;
         const result = await runGoTest(testConfig);
         this.count--;
-        this.commands.sendTestResult(
-            new TestResult(testConfig.testUri, testConfig.testName, result.isPassed, result.output, result.err));
-        
+        testConfig.functions.forEach(t => {
+            let isTestPassed = true;
+            if (result.isPassed === false && (!result.failedTests || result.failedTests.length === 0 || result.failedTests.indexOf(t) !== -1)) {
+                isTestPassed = false;
+            }
+            this.commands.sendTestResult(new TestResult(testConfig.testUri, t, isTestPassed, result.output, result.err));
+        });
+
         this.commands.sendTestCompleted();
     }
     private onTestCompleted() {
