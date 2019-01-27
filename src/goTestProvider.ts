@@ -35,9 +35,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 				title: testNode.tooltip,
 				arguments: [testNode]
 			};
-
 		}
-
 		treeItem.iconPath = {
 			dark: this.context.asAbsolutePath(path.join("resources", "dark", testNode.icon)),
 			light: this.context.asAbsolutePath(path.join("resources", "light", testNode.icon))
@@ -78,11 +76,12 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
 		this.__discoveredTestsMap = new Map();
 		this._discoveredTests.forEach(x => {
-			if (x.children && x.children.length > 0) {
+			if (x.isTestSuite) {
 				x.children.forEach(node => {
 					this.__discoveredTestsMap.set(this.getNodeKey(node.uri.fsPath, node.name), node);
 				});
 			}
+			this.__discoveredTestsMap.set(this.getNodeKey(x.uri.fsPath, x.name), x);
 		});
 
 		this._discovering = false;
@@ -92,16 +91,15 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		testNode ? this.setLoading(testNode) : this.setAlloading();
 	}
 	private setLoading(testNode: TestNode) {
-
 		let tempNode = this.__discoveredTestsMap.get(this.getNodeKey(testNode.uri.fsPath, testNode.name));
 		if (tempNode) {
 			tempNode.setLoading();
 		}
-		this.refresh(testNode);
+		this.refresh(tempNode);
 	}
 	private setAlloading() {
 		this.discoveredTests.
-			filter(s => s.children && s.children.length > 0).
+			filter(s => s.isTestSuite).
 			forEach(s => s.children.forEach(t => t.setLoading()));
 
 		this.refresh();

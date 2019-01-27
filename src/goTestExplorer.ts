@@ -33,31 +33,49 @@ export class GoTestExplorer {
             vscode.window.showInformationMessage(output);
         }));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", this.go.bind(this)));
-        context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', (testNode: TestNode) => {
-
-            if (testNode.children) {
-                testNode.children.forEach(t => this.onRunSingleTest(t))
-            }
-        }));
+        context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', this.runTestSuite.bind(this)));
         context.subscriptions.push(this.commands.testCompleted(this.onTestCompleted, this));
         testDiscoverer.discoverAllTests();
 
     }
     async onRunSingleTest(testNode: TestNode) {
         this.commands.sendTestRunStarted(testNode);
+        const testConfig = this.buildTestConfig(testNode);
+        const testSuite = new TestNode(testConfig.testName, testConfig.testUri);
+        this.commands.sendTestRunStarted(testSuite);
+        this.pushToBuffer(testConfig);
+    }
+    private runTestSuite(testNode: TestNode) {
+        if (testNode.children.length === 0) {
+            return;
+        }
+        testNode.children.forEach(t => this.commands.sendTestRunStarted(t));
+        this.commands.sendTestRunStarted(testNode);
+        const testConfig = this.buildTestConfig(testNode);
+        this.pushToBuffer(testConfig);
+    }
 
+    private onRunAllTests() {
+        this.goTestProvider.discoveredTests.
+            filter(s => s.isTestSuite).
+            forEach(t => this.runTestSuite(t));
+    }
+
+    private buildTestConfig(testNode: TestNode): TestConfig {
+        let tests = testNode.children.map(node => node.name);
+        tests = tests.length > 0 ? tests : [testNode.name];
         const testConfig = {
             dir: path.dirname(testNode.uri.fsPath),
             goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
             flags: [""],
-            functions: [testNode.name],
+            functions: tests,
             testUri: testNode.uri,
-            testName: testNode.name
+            testName: path.basename(testNode.uri.fsPath)
         };
-        this.pushToBuffer(testConfig);
+        return testConfig;
     }
 
-    pushToBuffer(testConfig: TestConfig) {
+    private pushToBuffer(testConfig: TestConfig) {
 
         this.testBuffer.push(testConfig);
         this.processTestBuffer();
@@ -71,19 +89,23 @@ export class GoTestExplorer {
         this.count++;
         const result = await runGoTest(testConfig);
         this.count--;
-        this.commands.sendTestResult(
-            new TestResult(testConfig.testUri, testConfig.testName, result.isPassed, result.output, result.err));
-        
+
+        let isTestSuitePassed = true;
+        testConfig.functions.forEach(t => {
+            let isTestPassed = true;
+            if (result.isPassed === false && (!result.failedTests || result.failedTests.length === 0 || result.failedTests.indexOf(t) !== -1)) {
+                isTestPassed = false;
+                isTestSuitePassed = false;
+            }
+            this.commands.sendTestResult(new TestResult(testConfig.testUri, t, isTestPassed, result.output, result.err));
+        });
+
+        this.commands.sendTestResult(new TestResult(testConfig.testUri, testConfig.testName, isTestSuitePassed, result.output, result.err));
         this.commands.sendTestCompleted();
     }
+
     private onTestCompleted() {
         this.processTestBuffer();
-    }
-
-    onRunAllTests() {
-        this.goTestProvider.discoveredTests.
-            filter(s => s.children && s.children.length > 0).
-            forEach(s => s.children.forEach(t => this.onRunSingleTest(t)));
     }
 
     public async go(testNode: TestNode): Promise<void> {
@@ -113,6 +135,7 @@ export class GoTestExplorer {
 
 
     }
+
     public findTestLocation(symbols: vscode.SymbolInformation[], testNode: TestNode): vscode.SymbolInformation {
 
         if (symbols.length === 0) {
