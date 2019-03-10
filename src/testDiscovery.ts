@@ -23,7 +23,6 @@ export class TestDiscovery {
                 console.error(err);
             });
         });
-
     }
 
     async discoverTests(uri: vscode.Uri) {
@@ -38,8 +37,7 @@ export class TestDiscovery {
         });
 
         Promise.all(promises).then(testNodeList => {
-            this.commands.sendDiscoveredTests([].concat(...testNodeList));
-            
+            this.commands.sendDiscoveredTests([].concat(...testNodeList)); 
         });
     }
 
@@ -51,11 +49,7 @@ export class TestDiscovery {
         let files = results.filter(([name, type]) => type === vscode.FileType.File)
             .map(([name, type]) => ({ name: name, uri: vscode.Uri.file(path.join(uri.fsPath, name)), type }));
 
-
-        let resultfiles = results.filter(([name, type]) => {
-            const basename = path.basename(name);
-          return  type === vscode.FileType.Directory && Config.SkipFolders.indexOf(basename) === -1;
-        });
+        let resultfiles = TestDiscovery.filterSkipFolders(results);
         if (resultfiles.length === 0) {
             return Promise.resolve(files);
         }
@@ -63,13 +57,18 @@ export class TestDiscovery {
             this.getGoTestFiles(vscode.Uri.file(path.join(uri.fsPath, name))));
             
         return Promise.all(promises).then(results => {
-
             let output = results.map(r => [].concat(...r));
             return Promise.resolve(files.concat(...output));
         });
-
-
     }
+
+    private static filterSkipFolders(results: [string, vscode.FileType][]) {
+        return results.filter(([name, type]) => {
+            const basename = path.basename(name);
+            return type === vscode.FileType.Directory && Config.SkipFolders.indexOf(basename) === -1;
+        });
+    }
+
     static filterGoTestFileOrDirectory(items: [string, vscode.FileType][]): [string, vscode.FileType][] {
         return items.filter(([name, type]) => name.endsWith("_test.go")
             && type === vscode.FileType.File
