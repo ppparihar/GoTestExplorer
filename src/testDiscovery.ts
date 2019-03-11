@@ -20,7 +20,7 @@ export class TestDiscovery {
             srcLocation = exists ? srcLocation : workspaceFolder.uri.path;
             const uri = vscode.Uri.file(srcLocation);
             this.discoverTests(uri).catch(err => {
-                console.error(err);
+                vscode.window.showErrorMessage('An error occurred: '+err);
             });
         });
     }
