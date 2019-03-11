@@ -1,5 +1,8 @@
 # Change Log
 
+## V0.1.10
+- Added error message notification for any error occur while discovering tests.
+
 ## V0.1.9
 - Execute test per test suite with the help of go tools to improve performace.
 - Update test suite icon based on the test result
