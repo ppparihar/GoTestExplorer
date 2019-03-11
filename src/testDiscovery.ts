@@ -21,6 +21,7 @@ export class TestDiscovery {
             const uri = vscode.Uri.file(srcLocation);
             this.discoverTests(uri).catch(err => {
                 vscode.window.showErrorMessage('An error occurred: '+err);
+                this.commands.sendDiscoveredTests([]); 
             });
         });
     }
