@@ -50,7 +50,7 @@ export class TestDiscovery {
         let files = results.filter(([name, type]) => type === vscode.FileType.File)
             .map(([name, type]) => ({ name: name, uri: vscode.Uri.file(path.join(uri.fsPath, name)), type }));
 
-        let resultfiles = TestDiscovery.filterSkipFolders(results);
+        let resultfiles = TestDiscovery.filterOutSkipFolders(results);
         if (resultfiles.length === 0) {
             return Promise.resolve(files);
         }
@@ -63,7 +63,7 @@ export class TestDiscovery {
         });
     }
 
-    private static filterSkipFolders(results: [string, vscode.FileType][]) {
+    private static filterOutSkipFolders(results: [string, vscode.FileType][]) {
         return results.filter(([name, type]) => {
             const basename = path.basename(name);
             return type === vscode.FileType.Directory && Config.SkipFolders.indexOf(basename) === -1;
