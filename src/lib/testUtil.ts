@@ -10,6 +10,9 @@ import { RawTestResult } from '../rawTestResult';
 //const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const sendSignal = 'SIGKILL';
 
+const testFuncRegex = /^Test.*/;
+const testMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
+//const benchmarkRegex = /^Benchmark.*/;
 /**
  *  testProcesses holds a list of currently running test processes.
  */
@@ -64,7 +67,7 @@ export function getTestFunctions(uri: vscode.Uri, token: vscode.CancellationToke
 		.then(symbols =>
 			symbols.filter(sym =>
 				sym.kind === vscode.SymbolKind.Function
-				&& (sym.name.startsWith('Test'))
+				&& (sym.name.match(testFuncRegex) || sym.name.match(testMethodRegex))
 			)
 		);
 }
@@ -216,8 +219,6 @@ export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
 					runningTestProcesses.splice(index, 1);
 				}
 
-
-
 				resolve(new RawTestResult(code === 0, testResultLines, failedTests));
 			});
 
@@ -254,11 +255,22 @@ function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
 			params = ['-bench', util.format('^%s$', testconfig.functions.join('|'))];
 		} else {
 			let testFunctions = testconfig.functions;
-
-			if (testFunctions.length > 0) {
-				params = params.concat(['-run', util.format('^%s$', testFunctions.join('|'))]);
+			let testifyMethods = testFunctions.filter(fn => testMethodRegex.test(fn));
+			if (testifyMethods.length > 0) {
+				// filter out testify methods
+				testFunctions = testFunctions.filter(fn => !testMethodRegex.test(fn));
+				testifyMethods = testifyMethods.map(extractInstanceTestName);
 			}
 
+			// we might skip the '-run' param when running only testify methods, which will result
+			// in running all the test methods, but one of them should call testify's `suite.Run(...)`
+			// which will result in the correct thing to happen
+			if (testFunctions.length > 0) {
+				params = params.concat(['-run', util.format('^(%s)$', testFunctions.join('|'))]);
+			}
+			if (testifyMethods.length > 0) {
+				params = params.concat(['-testify.m', util.format('^(%s)$', testifyMethods.join('|'))]);
+			}
 		}
 		return Promise.resolve(params);
 	}
@@ -269,6 +281,19 @@ function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
 	return Promise.resolve(params);
 }
 
+/**
+ * Extracts test method name of a suite test function.
+ * For example a symbol with name "(*testSuite).TestMethod" will return "TestMethod".
+ *
+ * @param symbolName Symbol Name to extract method name from.
+ */
+export function extractInstanceTestName(symbolName: string): string {
+	const match = symbolName.match(testMethodRegex);
+	if (!match || match.length !== 3) {
+		return null;
+	}
+	return match[2];
+}
 
 
 
