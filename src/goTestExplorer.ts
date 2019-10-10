@@ -37,6 +37,16 @@ export class GoTestExplorer {
         context.subscriptions.push(this.commands.testCompleted(this.onTestCompleted, this));
         testDiscoverer.discoverAllTests();
 
+    vscode.workspace.onDidSaveTextDocument(document => {
+        if (document.languageId !== 'go') {
+            return;
+        }
+        let testOnSave = vscode.workspace.getConfiguration('go')['testOnSave'];
+        if (!!testOnSave) {
+            vscode.commands.executeCommand('goTestExplorer.runAllTest');
+        }
+    }, context.subscriptions);
+
     }
     async onRunSingleTest(testNode: TestNode) {
         this.commands.sendTestRunStarted(testNode);
