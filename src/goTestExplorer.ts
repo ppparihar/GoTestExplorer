@@ -37,15 +37,7 @@ export class GoTestExplorer {
         context.subscriptions.push(this.commands.testCompleted(this.onTestCompleted, this));
         testDiscoverer.discoverAllTests();
 
-        vscode.workspace.onDidSaveTextDocument(document => {
-            if (document.languageId !== 'go') {
-                return;
-            }
-            let testOnSave = vscode.workspace.getConfiguration('go')['testOnSave'];
-            if (!!testOnSave) {
-                vscode.commands.executeCommand('goTestExplorer.runAllTest');
-            }
-        }, context.subscriptions);
+        vscode.workspace.onDidSaveTextDocument(document => this.onSaveDocument(document), context.subscriptions);
 
     }
     async onRunSingleTest(testNode: TestNode) {
@@ -165,6 +157,31 @@ export class GoTestExplorer {
         }
 
         return symbols[0];
+    }
+
+    private onSaveDocument(document: vscode.TextDocument) {
+        if (document.languageId !== 'go') {
+            return;
+        }
+        let testOnSave = vscode.workspace.getConfiguration('go')['testOnSave'];
+        if (!!testOnSave) {
+            this.goTestProvider.discoveredTests.
+                filter(t => t.isTestSuite).
+                filter(u => this.isSameGoTest(document.uri, u.uri)).
+                forEach(v => this.runTestSuite(v));
+        }
+    }
+
+    private isSameGoTest(gofile: vscode.Uri, testfile: vscode.Uri): boolean {
+        let gf = gofile.toString();
+        let tf = testfile.toString();
+        if (gf === tf) {
+            return true;
+        }
+        let gosuf = '.go';
+        let testsuf = '_test.go';
+        return (gf.endsWith(gosuf) && tf.endsWith(testsuf)) &&
+            gf.slice(0, -gosuf.length) === tf.slice(0, -testsuf.length);
     }
 
 }
