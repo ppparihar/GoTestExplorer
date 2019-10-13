@@ -57,6 +57,9 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	get discoveredTests(): TestNode[] {
 		return this._discoveredTests;
 	}
+	getdiscoveredTests(key: string): TestNode {
+		return this.__discoveredTestsMap.get(key);
+	}
 
 	private updateTestResult(testResult: TestResult) {
 
