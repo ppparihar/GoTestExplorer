@@ -165,23 +165,24 @@ export class GoTestExplorer {
         }
         let testOnSave = vscode.workspace.getConfiguration('go')['testOnSave'];
         if (!!testOnSave) {
-            this.goTestProvider.discoveredTests.
-                filter(t => t.isTestSuite).
-                filter(u => this.isSameGoTest(document.uri, u.uri)).
-                forEach(v => this.runTestSuite(v));
+            var gotest = this.getGoTestNode(document.uri);
+            if (gotest instanceof TestNode) {
+                this.runTestSuite(gotest);
+            }
         }
     }
 
-    private isSameGoTest(gofile: vscode.Uri, testfile: vscode.Uri): boolean {
-        let gf = gofile.toString();
-        let tf = testfile.toString();
-        if (gf === tf) {
-            return true;
-        }
+    private getGoTestNode(uri: vscode.Uri): TestNode | undefined {
         let gosuf = '.go';
         let testsuf = '_test.go';
-        return (gf.endsWith(gosuf) && tf.endsWith(testsuf)) &&
-            gf.slice(0, -gosuf.length) === tf.slice(0, -testsuf.length);
+        var uristr = uri.fsPath;
+        if (uristr.endsWith(testsuf)) {
+            return this.goTestProvider.getDiscoveredTestNode(uristr);
+        } else if (uristr.endsWith(gosuf)) {
+            var testfile = uristr.slice(0, -gosuf.length).concat(testsuf);
+            return this.goTestProvider.getDiscoveredTestNode(testfile);
+        }
+        return undefined;
     }
 
 }
