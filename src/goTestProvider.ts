@@ -57,6 +57,9 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	get discoveredTests(): TestNode[] {
 		return this._discoveredTests;
 	}
+	getDiscoveredTestNode(key: string): TestNode {
+		return this.__discoveredTestsMap.get(key);
+	}
 
 	private updateTestResult(testResult: TestResult) {
 
@@ -80,8 +83,10 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 				x.children.forEach(node => {
 					this.__discoveredTestsMap.set(this.getNodeKey(node.uri.fsPath, node.name), node);
 				});
+				this.__discoveredTestsMap.set(x.uri.fsPath, x);
+			} else {
+				this.__discoveredTestsMap.set(this.getNodeKey(x.uri.fsPath, x.name), x);
 			}
-			this.__discoveredTestsMap.set(this.getNodeKey(x.uri.fsPath, x.name), x);
 		});
 
 		this._discovering = false;
