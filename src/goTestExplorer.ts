@@ -163,9 +163,9 @@ export class GoTestExplorer {
         if (document.languageId !== 'go') {
             return;
         }
-        let testOnSave = vscode.workspace.getConfiguration('go')['testOnSave'];
+        const testOnSave = vscode.workspace.getConfiguration('go')['testOnSave'];
         if (!!testOnSave) {
-            var gotest = this.getGoTestNode(document.uri);
+            const gotest = this.getGoTestNode(document.uri);
             if (gotest instanceof TestNode) {
                 this.runTestSuite(gotest);
             }
@@ -173,13 +173,13 @@ export class GoTestExplorer {
     }
 
     private getGoTestNode(uri: vscode.Uri): TestNode | undefined {
-        let gosuf = '.go';
-        let testsuf = '_test.go';
-        var uristr = uri.fsPath;
+        const gosuf = '.go';
+        const testsuf = '_test.go';
+        const uristr = uri.fsPath;
         if (uristr.endsWith(testsuf)) {
             return this.goTestProvider.getDiscoveredTestNode(uristr);
         } else if (uristr.endsWith(gosuf)) {
-            var testfile = uristr.slice(0, -gosuf.length).concat(testsuf);
+            const testfile = uristr.slice(0, -gosuf.length).concat(testsuf);
             return this.goTestProvider.getDiscoveredTestNode(testfile);
         }
         return undefined;
