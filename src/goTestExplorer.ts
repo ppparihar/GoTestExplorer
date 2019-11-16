@@ -165,10 +165,13 @@ export class GoTestExplorer {
         }
         const testOnSave = vscode.workspace.getConfiguration('go')['testOnSave'];
         if (!!testOnSave) {
-            const gotest = this.getGoTestNode(document.uri);
-            if (gotest instanceof TestNode) {
-                this.runTestSuite(gotest);
-            }
+            const testDiscoverer = new TestDiscovery(this.commands);
+            testDiscoverer.rediscoverTests(document.uri).then(() => {
+                const gotest = this.getGoTestNode(document.uri);
+                if (gotest instanceof TestNode) {
+                    this.runTestSuite(gotest);
+                }
+            });
         }
     }
 

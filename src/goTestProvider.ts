@@ -15,6 +15,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	private _discovering: boolean;
 	constructor(private context: vscode.ExtensionContext, commands: Commands) {
 		context.subscriptions.push(commands.discoveredTest(this.onDicoveredTest, this));
+		context.subscriptions.push(commands.rediscoveredTest(this.onRediscoveredTest, this));
 		context.subscriptions.push(commands.testDiscoveryStarted(this.onDiscoverTestStart, this));
 		context.subscriptions.push(commands.testResult(this.updateTestResult, this));
 		context.subscriptions.push(commands.testRunStarted(this.onTestRunStarted, this));
@@ -90,6 +91,21 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		});
 
 		this._discovering = false;
+		this.refresh();
+	}
+	private onRediscoveredTest(nodes: TestNode[]) {
+		nodes.forEach(node => {
+			const existingTestInd = this._discoveredTests.findIndex(test => node.uri.fsPath === test.uri.fsPath);
+			this._discoveredTests[existingTestInd] = node;
+			if (node.isTestSuite) {
+				node.children.forEach(child => {
+					this.__discoveredTestsMap.set(this.getNodeKey(child.uri.fsPath, child.name), child);
+				});
+				this.__discoveredTestsMap.set(node.uri.fsPath, node);
+			} else {
+				this.__discoveredTestsMap.set(this.getNodeKey(node.uri.fsPath, node.name), node);
+			}
+		});
 		this.refresh();
 	}
 	private onTestRunStarted(testNode: TestNode) {
