@@ -4,7 +4,8 @@ node_js:
 sudo: false
 os:
   #- osx
-  - linux
+  #- linux
+  - windows
 
 before_install:
   - if [ $TRAVIS_OS_NAME == "linux" ]; then
