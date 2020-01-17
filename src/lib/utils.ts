@@ -1,9 +1,9 @@
 let toolsGopath: string;
 import vscode = require('vscode');
-import fs = require('fs');
 import path = require('path');
 import os = require('os');
 import cp = require('child_process');
+import { parseEnvFile } from './goPath';
 import { NearestNeighborDict, Node } from './avlTree';
 
 export function getToolsGopath(useCache: boolean = true): string {
@@ -132,30 +132,6 @@ export function stripBOM(s: string): string {
 		s = s.substr(1);
 	}
 	return s;
-}
-
-export function parseEnvFile(path: string): { [key: string]: string } {
-	const env: { [key: string]: any } = {};
-	if (!path) {
-		return env;
-	}
-
-	try {
-		const buffer = stripBOM(fs.readFileSync(path, 'utf8'));
-		buffer.split('\n').forEach(line => {
-			const r = line.match(/^\s*([\w\.\-]+)\s*=\s*(.*)?\s*$/);
-			if (r !== null) {
-				let value = r[2] || '';
-				if (value.length > 0 && value.charAt(0) === '"' && value.charAt(value.length - 1) === '"') {
-					value = value.replace(/\\n/gm, '\n');
-				}
-				env[r[1]] = value.replace(/(^['"]|['"]$)/g, '');
-			}
-		});
-		return env;
-	} catch (e) {
-		throw new Error(`Cannot load environment variables from file ${path}`);
-	}
 }
 
 export function getCurrentGoPath(workspaceUri?: vscode.Uri): string {
