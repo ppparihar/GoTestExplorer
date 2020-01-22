@@ -3,6 +3,7 @@ import vscode = require('vscode');
 import path = require('path');
 import os = require('os');
 import cp = require('child_process');
+import { parseEnvFile } from './goPath';
 import { NearestNeighborDict, Node } from './avlTree';
 
 export function getToolsGopath(useCache: boolean = true): string {
@@ -81,12 +82,24 @@ export function killProcess(p: cp.ChildProcess) {
 export function getTestEnvVars(config: vscode.WorkspaceConfiguration): any {
 	const envVars = getToolsEnvVars();
 	const testEnvConfig = config['testEnvVars'] || {};
-	// removed  testEnvVars files
+
+	let fileEnv: { [key: string]: any } = {};
+	let testEnvFile = config['testEnvFile'];
+	if (testEnvFile) {
+		testEnvFile = resolvePath(testEnvFile);
+		try {
+			fileEnv = parseEnvFile(testEnvFile);
+		} catch (e) {
+			console.log(e);
+		}
+	}
+
+	Object.keys(fileEnv).forEach(key => envVars[key] = typeof fileEnv[key] === 'string' ? resolvePath(fileEnv[key]) : fileEnv[key]);
 	Object.keys(testEnvConfig).forEach(key => envVars[key] = typeof testEnvConfig[key] === 'string' ? resolvePath(testEnvConfig[key]) : testEnvConfig[key]);
-	
 
 	return envVars;
 }
+
 
 export function getToolsEnvVars(): any {
 	const config = vscode.workspace.getConfiguration('go', vscode.window.activeTextEditor ? vscode.window.activeTextEditor.document.uri : null);
@@ -112,6 +125,13 @@ export function getToolsEnvVars(): any {
 	}
 
 	return envVars;
+}
+
+export function stripBOM(s: string): string {
+	if (s && s[0] === '\uFEFF') {
+		s = s.substr(1);
+	}
+	return s;
 }
 
 export function getCurrentGoPath(workspaceUri?: vscode.Uri): string {
