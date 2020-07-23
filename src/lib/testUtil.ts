@@ -125,6 +125,7 @@ export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
 		}
 
 		let buildTags: string = testconfig.goConfig['buildTags'];
+		let testFlags: Array<string> = testconfig.goConfig['testFlags'];
 		let args: Array<string> = ['test', ...testconfig.flags];
 		let testType: string = testconfig.isBenchmark ? 'Benchmarks' : 'Tests';
 
@@ -136,6 +137,8 @@ export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
 		if (buildTags && testconfig.flags.indexOf('-tags') === -1) {
 			args.push('-tags', buildTags);
 		}
+		
+		testFlags.forEach((flag)=> args.push(flag));
 
 		let testEnvVars = getTestEnvVars(testconfig.goConfig);
 		let goRuntimePath = getBinPath('go');
