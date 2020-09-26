@@ -125,7 +125,7 @@ export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
 		}
 
 		let buildTags: string = testconfig.goConfig['buildTags'];
-		let testFlags: Array<string> = testconfig.goConfig['testFlags'];
+		let testFlags: Array<string> = testconfig.goConfig['testFlags'] || [];
 		let args: Array<string> = ['test', ...testconfig.flags];
 		let testType: string = testconfig.isBenchmark ? 'Benchmarks' : 'Tests';
 
