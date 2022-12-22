@@ -64,10 +64,13 @@ export class GoTestExplorer {
     private buildTestConfig(testNode: TestNode): TestConfig {
         let tests = testNode.children.map(node => node.name);
         tests = tests.length > 0 ? tests : [testNode.name];
+        const config = vscode.workspace.getConfiguration('go', testNode.uri);
+        const flags = config.get('testFlags', [""]);
+
         const testConfig = {
             dir: path.dirname(testNode.uri.fsPath),
-            goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
-            flags: [""],
+            goConfig: config,
+            flags: flags,
             functions: tests,
             testUri: testNode.uri,
             testName: path.basename(testNode.uri.fsPath)
