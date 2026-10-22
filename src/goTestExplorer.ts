@@ -81,6 +81,7 @@ export class GoTestExplorer {
       treeDataProvider: this.goTestProvider,
     });
     context.subscriptions.push(this.treeView);
+    this.goTestProvider.fileCoverage = (suite) => this.coverageOfTestFile(suite);
     this.coverage = new CoverageDecorations();
     // The tree follows the coverage, whatever changed it: a run, or a save.
     this.coverage.onDidChange(() => this.showCoverageSummary());
@@ -185,11 +186,9 @@ export class GoTestExplorer {
    */
   private showCoverageSummary() {
     if (!this.coverageEnabled) {
-      this.goTestProvider.fileCoverage = new Map();
       this.goTestProvider.coverageSummary = undefined;
       return;
     }
-    this.goTestProvider.fileCoverage = this.coverageOfTestFiles();
     const percent = this.coverage.percent;
     const files = this.coverage.report().length;
     this.goTestProvider.coverageSummary =
@@ -199,27 +198,26 @@ export class GoTestExplorer {
   }
 
   /**
-   * What the tests covered for each test file, to be shown beside it.
+   * What the tests covered for a test file, to be shown beside it.
+   *
+   * Nothing is shown for a file whose tests have not run: coverage that other
+   * tests produced would read as if it were the result of these.
    *
    * The coverage of a test file is the coverage of the file it tests, by the
    * naming of Go (`a_test.go` tests `a.go`). A test file without such a file
    * shows the coverage of its package.
    */
-  private coverageOfTestFiles(): Map<string, string> {
-    const shown = new Map<string, string>();
-    this.goTestProvider.discoveredTests.forEach((suite) => {
-      const testFile = suite.uri.fsPath;
-      const own = this.coverage.percentOfFile(testFile.replace(/_test\.go$/, '.go'));
-      if (own !== undefined) {
-        shown.set(testFile, `${own.toFixed(1)}%`);
-        return;
-      }
-      const wholePackage = this.coverage.percentOfDirectory(path.dirname(testFile));
-      if (wholePackage !== undefined) {
-        shown.set(testFile, `package ${wholePackage.toFixed(1)}%`);
-      }
-    });
-    return shown;
+  private coverageOfTestFile(suite: TestNode): string | undefined {
+    if (!this.coverageEnabled || !suite.children.some((test) => test.testResult)) {
+      return undefined;
+    }
+    const testFile = suite.uri.fsPath;
+    const own = this.coverage.percentOfFile(testFile.replace(/_test\.go$/, '.go'));
+    if (own !== undefined) {
+      return `${own.toFixed(1)}%`;
+    }
+    const wholePackage = this.coverage.percentOfDirectory(path.dirname(testFile));
+    return wholePackage === undefined ? undefined : `package ${wholePackage.toFixed(1)}%`;
   }
 
   /**

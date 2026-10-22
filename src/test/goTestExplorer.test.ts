@@ -511,7 +511,7 @@ describe('GoTestExplorer runs a whole module', () => {
       await waitFor(() => explorer.goTestProvider.getTreeItem(a).description === undefined);
     });
 
-    it('shows the coverage beside each test file', async () => {
+    it('shows the coverage beside a test file only once its tests have run', async () => {
       const dir = path.join(moduleDir, 'pkg', 'a');
       const a = suiteIn(dir, 'a_test.go', ['TestAlpha']);
       const other = suiteIn(dir, 'extra_test.go', ['TestExtra']);
@@ -522,8 +522,13 @@ describe('GoTestExplorer runs a whole module', () => {
       await waitFor(() => completed.length > 0);
 
       const provider = explorer.goTestProvider;
-      // a_test.go tests a.go; extra_test.go has no extra.go, so its package shows.
+      // a_test.go tests a.go. extra_test.go has not run, so it shows nothing,
+      // although the coverage of its package is known.
       expect(provider.getTreeItem(a).description).toBe('50.0%');
+      expect(provider.getTreeItem(other).description).toBeUndefined();
+
+      // Once it has run, it has no extra.go, so its package shows.
+      explorer.commands.sendTestResult(new TestResult(other.uri, 'TestExtra', true, []));
       expect(provider.getTreeItem(other).description).toBe('package 50.0%');
 
       await vscode.commands.executeCommand('goTestExplorer.hideCoverage');
