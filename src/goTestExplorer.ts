@@ -401,9 +401,7 @@ export class GoTestExplorer {
   private updateMessage() {
     const lines = [this.filterMessage];
     if (this.coverageEnabled) {
-      lines.push(
-        'Coverage is on: lines the tests ran are green, lines they did not are red. Running a file or a test adds to the coverage, Run All starts it again.',
-      );
+      lines.push('Coverage is on. Green lines ran, red lines did not.');
     }
     const text = lines.filter(Boolean).join('\n');
     this.treeView.message = text || undefined;
