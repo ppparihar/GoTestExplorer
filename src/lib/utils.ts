@@ -1,9 +1,9 @@
 let toolsGopath: string;
-import vscode = require('vscode');
+import * as vscode from 'vscode';
 import path = require('path');
 import os = require('os');
 import cp = require('child_process');
-import { parseEnvFile } from './goPath';
+import { parseEnvFile, resolveHomeDir } from './goPath';
 import { NearestNeighborDict, Node } from './avlTree';
 
 export function getToolsGopath(useCache: boolean = true): string {
@@ -14,7 +14,7 @@ export function getToolsGopath(useCache: boolean = true): string {
 	return toolsGopath;
 }
 
-function resolveToolsGopath(): string {
+function resolveToolsGopath(): string | undefined {
 
 	let toolsGopathForWorkspace = vscode.workspace.getConfiguration('go')['toolsGopath'] || '';
 
@@ -39,6 +39,7 @@ function resolveToolsGopath(): string {
 			return toolsGopath;
 		}
 	}
+	return undefined;
 }
 /**
  * Exapnds ~ to homedir in non-Windows platform and resolves ${workspaceRoot}
@@ -63,11 +64,6 @@ export function resolvePath(inputPath: string, workspaceRoot?: string): string {
 /**
  * Exapnds ~ to homedir in non-Windows platform
  */
-export function resolveHomeDir(inputPath: string): string {
-	if (!inputPath || !inputPath.trim()) return inputPath;
-	return inputPath.startsWith('~') ? path.join(os.homedir(), inputPath.substr(1)) : inputPath;
-}
-
 export function killProcess(p: cp.ChildProcess) {
 	if (p) {
 		try {
@@ -79,8 +75,8 @@ export function killProcess(p: cp.ChildProcess) {
 	}
 }
 
-export function getTestEnvVars(config: vscode.WorkspaceConfiguration): any {
-	const envVars = getToolsEnvVars();
+export function getTestEnvVars(config: vscode.WorkspaceConfiguration, workspaceUri?: vscode.Uri): any {
+	const envVars = getToolsEnvVars(workspaceUri);
 	const testEnvConfig = config['testEnvVars'] || {};
 
 	let fileEnv: { [key: string]: any } = {};
@@ -101,11 +97,21 @@ export function getTestEnvVars(config: vscode.WorkspaceConfiguration): any {
 }
 
 
-export function getToolsEnvVars(): any {
-	const config = vscode.workspace.getConfiguration('go', vscode.window.activeTextEditor ? vscode.window.activeTextEditor.document.uri : null);
+/**
+ * Builds the environment for a tool invocation.
+ *
+ * @param workspaceUri the resource the configuration should be resolved
+ * against. When omitted the focused editor is used, which is the right
+ * default for editor-driven actions but the wrong one for a test run — a test
+ * run must use the settings of the file under test, not of whichever file
+ * happens to be open.
+ */
+export function getToolsEnvVars(workspaceUri?: vscode.Uri): any {
+	const resource = workspaceUri ?? (vscode.window.activeTextEditor ? vscode.window.activeTextEditor.document.uri : null);
+	const config = vscode.workspace.getConfiguration('go', resource);
 	const toolsEnvVars = config['toolsEnvVars'];
 
-	const gopath = getCurrentGoPath();
+	const gopath = getCurrentGoPath(workspaceUri);
 	const envVars = Object.assign({}, process.env, gopath ? { GOPATH: gopath } : {});
 
 	if (toolsEnvVars && typeof toolsEnvVars === 'object') {
@@ -127,13 +133,6 @@ export function getToolsEnvVars(): any {
 	return envVars;
 }
 
-export function stripBOM(s: string): string {
-	if (s && s[0] === '\uFEFF') {
-		s = s.substr(1);
-	}
-	return s;
-}
-
 export function getCurrentGoPath(workspaceUri?: vscode.Uri): string {
 
 	const config = vscode.workspace.getConfiguration('go', workspaceUri);
@@ -142,8 +141,27 @@ export function getCurrentGoPath(workspaceUri?: vscode.Uri): string {
 	return  (configGopath || process.env['GOPATH']);
 }
 
-export function promptForMissingTool(tool: string ){
-    vscode.window.showInformationMessage(`${tool} is missing`)
+const warnedTools = new Set<string>();
+
+/**
+ * Reports a missing tool to the user, at most once per tool.
+ *
+ * A missing tool is typically discovered once per file, so reporting every
+ * time produces a burst of identical notifications.
+ */
+export function promptForMissingTool(tool: string) {
+	if (warnedTools.has(tool)) {
+		return;
+	}
+	warnedTools.add(tool);
+	vscode.window.showInformationMessage(`${tool} is missing`);
+}
+
+/**
+ * Clears the record of already-reported missing tools.
+ */
+export function resetMissingToolWarnings(): void {
+	warnedTools.clear();
 }
 export function getFileArchive(document: vscode.TextDocument): string {
 	let fileContents = document.getText();

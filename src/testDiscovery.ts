@@ -2,7 +2,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as vscode from "vscode";
 import { TestNode } from "./testNode";
-import { getTestFunctions } from "./lib/testUtil";
+import { getTestFunctions, isToolAvailable } from "./lib/testUtil";
 import { Commands } from "./commands";
 import { Entry } from "./entry";
 import { FileSystemProvider } from "./fileSystemProvider";
@@ -11,35 +11,60 @@ import { Config } from "./config";
 export class TestDiscovery {
 
     constructor(private commands: Commands){}
-   
+
     discoverAllTests() {
         this.commands.sendTestDiscoveryStarted();
-        const workspaceFolder = vscode.workspace.workspaceFolders.filter(folder => folder.uri.scheme === 'file')[0];
-        let srcLocation = path.join(workspaceFolder.uri.path, "src");
-        fs.exists(srcLocation, (exists) => {
-            srcLocation = exists ? srcLocation : workspaceFolder.uri.path;
-            const uri = vscode.Uri.file(srcLocation);
-            this.discoverTests(uri).catch(err => {
-                vscode.window.showErrorMessage('An error occurred: '+err);
-                this.commands.sendDiscoveredTests([]); 
+
+        const workspaceFolders = (vscode.workspace.workspaceFolders || [])
+            .filter(folder => folder.uri.scheme === 'file');
+
+        if (workspaceFolders.length === 0) {
+            this.commands.sendDiscoveredTests([]);
+            return;
+        }
+
+        if (!isToolAvailable('go-outline')) {
+            // Reporting this once, up front, is the difference between an
+            // actionable message and an empty tree with no explanation.
+            vscode.window.showErrorMessage(
+                'Cannot find "go-outline", which Go Test Explorer uses to list the tests in a file. '
+                + 'Install it with "go install github.com/ramya-rao-a/go-outline@latest" and make sure '
+                + 'its location is on your PATH, then refresh the test view.');
+            this.commands.sendDiscoveredTests([]);
+            return;
+        }
+
+        Promise.all(workspaceFolders.map(folder => this.discoverFolderTests(folder.uri)))
+            .then(results => {
+                this.commands.sendDiscoveredTests([].concat(...results));
+            })
+            .catch(err => {
+                vscode.window.showErrorMessage('An error occurred: ' + err);
+                this.commands.sendDiscoveredTests([]);
             });
-        });
     }
 
-    async discoverTests(uri: vscode.Uri) {
+    /**
+     * Discovers the tests under a single workspace folder. A folder with a
+     * `src` directory is scanned from there, otherwise from the folder root.
+     */
+    private async discoverFolderTests(folderUri: vscode.Uri): Promise<TestNode[]> {
+        const srcLocation = path.join(folderUri.fsPath, "src");
+        const root = await directoryExists(srcLocation) ? srcLocation : folderUri.fsPath;
+        return this.discoverTests(vscode.Uri.file(root));
+    }
+
+async discoverTests(uri: vscode.Uri): Promise<TestNode[]> {
         const items = await TestDiscovery.getGoTestFiles(uri);
-        let promises = items.map(async item => {
+        const suites = await Promise.all(items.map(async item => {
             let suite = new TestNode(item.name, item.uri);
             let symbols = await getTestFunctions(suite.uri, null);
 
             symbols = symbols.sort((a, b) => a.name.localeCompare(b.name));
             let nodeList = symbols.map(symbol => new TestNode(`${symbol.name}`, suite.uri));
             return new TestNode(suite.name, suite.uri, nodeList);
-        });
-
-        Promise.all(promises).then(testNodeList => {
-            this.commands.sendDiscoveredTests([].concat(...testNodeList)); 
-        });
+        }));
+        return suites;
     }
 
     static async getGoTestFiles(uri: vscode.Uri): Promise<Entry[]> {
@@ -56,7 +81,7 @@ export class TestDiscovery {
         }
         var promises = resultfiles.map(([name, type]) =>
             this.getGoTestFiles(vscode.Uri.file(path.join(uri.fsPath, name))));
-            
+
         return Promise.all(promises).then(results => {
             let output = results.map(r => [].concat(...r));
             return Promise.resolve(files.concat(...output));
@@ -76,4 +101,10 @@ export class TestDiscovery {
             || type === vscode.FileType.Directory
         );
     }
+}
+
+function directoryExists(target: string): Promise<boolean> {
+    return new Promise<boolean>(resolve => {
+        fs.stat(target, (err, stat) => resolve(!err && stat.isDirectory()));
+    });
 }

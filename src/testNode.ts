@@ -1,17 +1,17 @@
 
-import vscode = require('vscode');
+import * as vscode from 'vscode';
 import { TestResult } from './testResult';
 import { Icons } from './icons';
 export class TestNode {
 	private _testResult: TestResult;
-	private _isLoading: boolean;
+	private _isLoading: boolean = false;
 	constructor(
 		public readonly name: string,
 		public uri: vscode.Uri,
 		private _children?: TestNode[]
 	) { }
 	get isTestSuite(): boolean {
-		return this._children && this._children.length > 0;
+		return !!this._children && this._children.length > 0;
 	}
 	get tooltip(): string {
 		return `${this.name}`;

@@ -58,7 +58,16 @@ namespace _ {
 
 	export function readdir(path: string): Promise<string[]> {
 		return new Promise<string[]>((resolve, reject) => {
-			fs.readdir(path, (error, children) => handleResult(resolve, reject, error, normalizeNFC(children)));
+			// `normalizeNFC` must not run before the error is checked: on
+			// failure `children` is undefined and normalising it throws an
+			// uncaught error, which leaves the promise unsettled.
+			fs.readdir(path, (error, children) => {
+				if (error) {
+					handleResult(resolve, reject, error, [] as string[]);
+					return;
+				}
+				handleResult(resolve, reject, undefined, normalizeNFC(children));
+			});
 		});
 	}
 

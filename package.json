@@ -5,7 +5,7 @@
     "version": "0.1.13",
     "publisher": "premparihar",
     "engines": {
-        "vscode": "^1.26.0"
+        "vscode": "^1.85.0"
     },
     "keywords": [
         "go",
@@ -121,19 +121,21 @@
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
-        "postinstall": "node ./node_modules/vscode/bin/install",
-        "test": "npm run compile",
-        "test-backup": "npm run compile && node ./node_modules/vscode/bin/test",
-        "pkgvars": "node ./node_modules/vscode/bin/install"
+        "typecheck": "tsc -p ./ --noEmit && tsc -p ./bench --noEmit",
+        "test": "npm run typecheck && vitest run",
+        "test:watch": "vitest",
+        "bench": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/run-bench.ts",
+        "bench:discovery": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/discovery-bench.ts",
+        "bench:exec": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/exec-bench.ts"
     },
     "devDependencies": {
         "@types/mkdirp": "^0.5.2",
-        "@types/mocha": "^2.2.42",
-        "@types/node": "^8.10.25",
+        "@types/node": "^20.19.43",
         "@types/rimraf": "^2.0.2",
-        "tslint": "^5.8.0",
-        "typescript": "^2.6.1",
-        "vscode": "^1.1.21"
+        "@types/vscode": "~1.85.0",
+        "tsx": "^4.23.15",
+        "typescript": "^5.9.3",
+        "vitest": "^2.1.9"
     },
     "dependencies": {
         "mkdirp": "^0.5.1",

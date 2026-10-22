@@ -257,6 +257,7 @@ export class NearestNeighborDict<K, V> {
 				console.error('Internal error: Avl tree should never be more than two levels unbalanced');
 				if (heightDifference > 0) return BalanceState.UNBALANCED_LEFT;
 				if (heightDifference < 0) return BalanceState.UNBALANCED_RIGHT;
+				return BalanceState.BALANCED;
 			}
 		}
 	}

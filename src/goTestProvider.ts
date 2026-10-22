@@ -75,22 +75,37 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		this.refresh();
 	}
 	private onDicoveredTest(testNodeList: TestNode[]) {
+		const previousMap = this.__discoveredTestsMap;
 		this._discoveredTests = testNodeList && testNodeList.length > 0 ? testNodeList : [];
 
 		this.__discoveredTestsMap = new Map();
 		this._discoveredTests.forEach(x => {
 			if (x.isTestSuite) {
 				x.children.forEach(node => {
-					this.__discoveredTestsMap.set(this.getNodeKey(node.uri.fsPath, node.name), node);
+					this.registerNode(node, previousMap);
 				});
-				this.__discoveredTestsMap.set(x.uri.fsPath, x);
+				this.registerNode(x, previousMap);
 			} else {
-				this.__discoveredTestsMap.set(this.getNodeKey(x.uri.fsPath, x.name), x);
+				this.registerNode(x, previousMap);
 			}
 		});
 
 		this._discovering = false;
 		this.refresh();
+	}
+
+	/**
+	 * Registers a node in the lookup map, carrying over the result of the
+	 * matching node from the previous discovery so that a refresh does not
+	 * discard the outcome of tests that have already run.
+	 */
+	private registerNode(node: TestNode, previousMap: Map<string, TestNode>) {
+		const key = this.getNodeKey(node.uri.fsPath, node.name);
+		const previous = previousMap ? previousMap.get(key) : undefined;
+		if (previous && previous.testResult && !node.testResult) {
+			node.testResult = previous.testResult;
+		}
+		this.__discoveredTestsMap.set(key, node);
 	}
 	private onTestRunStarted(testNode: TestNode) {
 		testNode ? this.setLoading(testNode) : this.setAlloading();

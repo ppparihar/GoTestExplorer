@@ -2,7 +2,7 @@
 
 'use strict';
 
-import vscode = require('vscode');
+import * as vscode from 'vscode';
 import cp = require('child_process');
 import { getBinPath } from './testUtil';
 import { killProcess, getToolsEnvVars, promptForMissingTool, getFileArchive, makeMemoizedByteOffsetConverter } from './utils';

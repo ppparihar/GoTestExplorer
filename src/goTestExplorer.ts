@@ -5,21 +5,27 @@ import { runGoTest, getTestFunctions, TestConfig } from './lib/testUtil';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
+import { RawTestResult } from './rawTestResult';
 import { TestDiscovery } from './testDiscovery';
 import { Config } from './config';
+import { TestQueue } from './runner/testQueue';
 
 export class GoTestExplorer {
 
     goTestProvider: GoTestProvider;
-    testBuffer: TestConfig[];
-    count: number = 0;
 
     readonly commands: Commands;
+    private readonly testQueue: TestQueue;
+
     constructor(context: vscode.ExtensionContext) {
         this.commands = new Commands();
-        this.testBuffer = [];
         this.goTestProvider = new GoTestProvider(context, this.commands);
         const testDiscoverer = new TestDiscovery(this.commands);
+        this.testQueue = new TestQueue(
+            (testConfig) => runGoTest(testConfig),
+            Config.RunMaxParallelTest,
+            (testConfig, result) => this.onRunCompleted(testConfig, result),
+            (testConfig, error) => this.onRunFailed(testConfig, error));
         vscode.window.registerTreeDataProvider('goTestExplorer', this.goTestProvider);
 
 
@@ -34,16 +40,13 @@ export class GoTestExplorer {
         }));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.goToLocation", this.go.bind(this)));
         context.subscriptions.push(vscode.commands.registerCommand('goTestExplorer.runTestSuite', this.runTestSuite.bind(this)));
-        context.subscriptions.push(this.commands.testCompleted(this.onTestCompleted, this));
         testDiscoverer.discoverAllTests();
 
     }
     async onRunSingleTest(testNode: TestNode) {
         this.commands.sendTestRunStarted(testNode);
         const testConfig = this.buildTestConfig(testNode);
-        const testSuite = new TestNode(testConfig.testName, testConfig.testUri);
-        this.commands.sendTestRunStarted(testSuite);
-        this.pushToBuffer(testConfig);
+        this.enqueueTest(testConfig);
     }
     private runTestSuite(testNode: TestNode) {
         if (testNode.children.length === 0) {
@@ -52,7 +55,7 @@ export class GoTestExplorer {
         testNode.children.forEach(t => this.commands.sendTestRunStarted(t));
         this.commands.sendTestRunStarted(testNode);
         const testConfig = this.buildTestConfig(testNode);
-        this.pushToBuffer(testConfig);
+        this.enqueueTest(testConfig);
     }
 
     private onRunAllTests() {
@@ -64,10 +67,10 @@ export class GoTestExplorer {
     private buildTestConfig(testNode: TestNode): TestConfig {
         let tests = testNode.children.map(node => node.name);
         tests = tests.length > 0 ? tests : [testNode.name];
-        const testConfig = {
+        const testConfig: TestConfig = {
             dir: path.dirname(testNode.uri.fsPath),
             goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
-            flags: [""],
+            flags: [],
             functions: tests,
             testUri: testNode.uri,
             testName: path.basename(testNode.uri.fsPath)
@@ -75,21 +78,15 @@ export class GoTestExplorer {
         return testConfig;
     }
 
-    private pushToBuffer(testConfig: TestConfig) {
-
-        this.testBuffer.push(testConfig);
-        this.processTestBuffer();
+    private enqueueTest(testConfig: TestConfig) {
+        this.testQueue.enqueue(testConfig);
     }
 
-    private async processTestBuffer() {
-        if (this.testBuffer.length <= 0 || this.count > Config.RunMaxParallelTest) {
-            return;
-        }
-        const testConfig = this.testBuffer.shift();
-        this.count++;
-        const result = await runGoTest(testConfig);
-        this.count--;
-
+    /**
+     * A test invocation finished. Attribute the outcome to each test that was
+     * requested and report the suite-level result.
+     */
+    private onRunCompleted(testConfig: TestConfig, result: RawTestResult) {
         let isTestSuitePassed = true;
         testConfig.functions.forEach(t => {
             let isTestPassed = true;
@@ -104,8 +101,17 @@ export class GoTestExplorer {
         this.commands.sendTestCompleted();
     }
 
-    private onTestCompleted() {
-        this.processTestBuffer();
+    /**
+     * A test invocation failed outright. Report the whole suite as failed
+     * rather than leaving it spinning forever.
+     */
+    private onRunFailed(testConfig: TestConfig, error: Error) {
+        const output = [error.message];
+        testConfig.functions.forEach(t => {
+            this.commands.sendTestResult(new TestResult(testConfig.testUri, t, false, output, error));
+        });
+        this.commands.sendTestResult(new TestResult(testConfig.testUri, testConfig.testName, false, output, error));
+        this.commands.sendTestCompleted();
     }
 
     public async go(testNode: TestNode): Promise<void> {
@@ -130,7 +136,7 @@ export class GoTestExplorer {
 
         } catch (r) {
 
-            vscode.window.showWarningMessage(r.message);
+            vscode.window.showWarningMessage(r instanceof Error ? r.message : String(r));
         }
 
 

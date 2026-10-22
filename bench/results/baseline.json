@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-10-22T06:36:35.243Z",
+  "packages": 20,
+  "testsPerPackage": 20,
+  "discovery": {
+    "cold": {
+      "files": 20,
+      "tests": 400,
+      "durationMs": 21.0135
+    },
+    "warm": {
+      "files": 20,
+      "tests": 400,
+      "durationMs": 11.655875
+    }
+  },
+  "exec": {
+    "cold": {
+      "packages": 20,
+      "durationMs": 179.256166,
+      "exitCode": 0
+    },
+    "warm": {
+      "packages": 20,
+      "durationMs": 80.527292,
+      "exitCode": 0
+    }
+  }
+}

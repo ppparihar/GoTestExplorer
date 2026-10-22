@@ -68,7 +68,7 @@ export function getBinPathWithPreferredGopath(toolName: string, preferredGopaths
 			binPathCache[toolName] = defaultPathForGo;
 			return defaultPathForGo;
 		}
-		return;
+		return undefined;
 	}
 
 	// Else return the binary name directly (this will likely always fail downstream)
@@ -135,9 +135,9 @@ export function parseEnvFile(path: string): { [key: string]: string } {
 }
 
 // Walks up given folder path to return the closest ancestor that has `src` as a child
-export function getInferredGopath(folderPath: string): string {
+export function getInferredGopath(folderPath: string): string | undefined {
 	if (!folderPath) {
-		return;
+		return undefined;
 	}
 
 	let dirs = folderPath.toLowerCase().split(path.sep);
@@ -147,6 +147,7 @@ export function getInferredGopath(folderPath: string): string {
 	if (srcIdx > 0) {
 		return folderPath.substr(0, dirs.slice(0, srcIdx).join(path.sep).length);
 	}
+	return undefined;
 }
 
 /**
@@ -154,9 +155,9 @@ export function getInferredGopath(folderPath: string): string {
  * @param gopath string Current Gopath. Can be ; or : separated (as per os) to support multiple paths
  * @param currentFileDirPath string
  */
-export function getCurrentGoWorkspaceFromGOPATH(gopath: string, currentFileDirPath: string): string {
+export function getCurrentGoWorkspaceFromGOPATH(gopath: string, currentFileDirPath: string): string | undefined {
 	if (!gopath) {
-		return;
+		return undefined;
 	}
 	let workspaces: string[] = gopath.split(path.delimiter);
 	let currentWorkspace = '';

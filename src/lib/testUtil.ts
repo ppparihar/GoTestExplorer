@@ -1,11 +1,11 @@
 import cp = require('child_process');
-import vscode = require('vscode');
+import * as vscode from 'vscode';
+import fs = require('fs');
 import path = require('path');
-import os = require('os');
-import util = require('util');
 import { GoDocumentSymbolProvider } from './goOutline';
-import { getBinPathWithPreferredGopath } from './goPath';
-import { resolvePath, getCurrentGoPath, getTestEnvVars, LineBuffer } from './utils';
+import { getBinPathWithPreferredGopath, getBinPathFromEnvVar, envPath } from './goPath';
+import { getCurrentGoPath, getTestEnvVars, getToolsGopath, LineBuffer } from './utils';
+import { buildTargetArgs, resolveTestTimeout } from './testArgs';
 import { RawTestResult } from '../rawTestResult';
 //const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const sendSignal = 'SIGKILL';
@@ -16,7 +16,6 @@ const sendSignal = 'SIGKILL';
 const runningTestProcesses: cp.ChildProcess[] = [];
 
 
-let toolsGopath: string;
 const outputChannel = vscode.window.createOutputChannel('Go Test Explorer');
 
 /**
@@ -71,47 +70,33 @@ export function getTestFunctions(uri: vscode.Uri, token: vscode.CancellationToke
 export function getBinPath(tool: string): string {
 	return getBinPathWithPreferredGopath(tool, tool === 'go' ? [] : [getToolsGopath(), getCurrentGoPath()], vscode.workspace.getConfiguration('go', null).get('alternateTools'));
 }
-export function getToolsGopath(useCache: boolean = true): string {
-	if (!useCache || !toolsGopath) {
-		toolsGopath = resolveToolsGopath();
+
+/**
+ * Reports whether a tool can actually be executed.
+ *
+ * {@link getBinPath} falls back to returning the bare tool name when it
+ * cannot find the binary, so a truthy result is not enough to conclude the
+ * tool is installed.
+ */
+export function isToolAvailable(tool: string): boolean {
+	const binPath = getBinPath(tool);
+	if (!binPath) {
+		return false;
 	}
-
-	return toolsGopath;
-}
-
-function resolveToolsGopath(): string {
-
-	let toolsGopathForWorkspace = vscode.workspace.getConfiguration('go')['toolsGopath'] || '';
-
-	// In case of single root, use resolvePath to resolve ~ and ${workspaceRoot}
-	if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length <= 1) {
-		return resolvePath(toolsGopathForWorkspace);
-	}
-
-	// In case of multi-root, resolve ~ and ignore ${workspaceRoot}
-	if (toolsGopathForWorkspace.startsWith('~')) {
-		toolsGopathForWorkspace = path.join(os.homedir(), toolsGopathForWorkspace.substr(1));
-	}
-	if (toolsGopathForWorkspace && toolsGopathForWorkspace.trim() && !/\${workspaceRoot}/.test(toolsGopathForWorkspace)) {
-		return toolsGopathForWorkspace;
-	}
-
-	// If any of the folders in multi root have toolsGopath set, use it.
-	for (let i = 0; i < vscode.workspace.workspaceFolders.length; i++) {
-		let toolsGopath = <string>vscode.workspace.getConfiguration('go', vscode.workspace.workspaceFolders[i].uri).inspect('toolsGopath').workspaceFolderValue;
-		toolsGopath = resolvePath(toolsGopath, vscode.workspace.workspaceFolders[i].uri.fsPath);
-		if (toolsGopath) {
-			return toolsGopath;
+	if (path.isAbsolute(binPath)) {
+		try {
+			return fs.statSync(binPath).isFile();
+		} catch (e) {
+			return false;
 		}
 	}
+	return getBinPathFromEnvVar(tool, envPath, false) !== null;
 }
 
 /**
- * Runs go test and presents the output in the 'Go' channel.
- *
- * @param goConfig Configuration for the Go extension.
+ * Input to goTest.
  */
-export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
+export function runGoTest(testconfig: TestConfig): Promise<RawTestResult> {
 	return new Promise<RawTestResult>((resolve, reject) => {
 
 		// We do not want to clear it if tests are already running, as that could
@@ -132,7 +117,7 @@ export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
 		if (testconfig.isBenchmark) {
 			args.push('-benchmem', '-run=^$');
 		} else {
-			args.push('-timeout', testconfig.goConfig['testTimeout']);
+			args.push('-timeout', resolveTestTimeout(testconfig.goConfig['testTimeout']));
 		}
 		if (buildTags && testconfig.flags.indexOf('-tags') === -1) {
 			args.push('-tags', buildTags);
@@ -140,12 +125,16 @@ export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
 		
 		testFlags.forEach((flag)=> args.push(flag));
 
-		let testEnvVars = getTestEnvVars(testconfig.goConfig);
+		let testEnvVars = getTestEnvVars(testconfig.goConfig, testconfig.testUri);
 		let goRuntimePath = getBinPath('go');
 
 		if (!goRuntimePath) {
-			vscode.window.showInformationMessage('Cannot find "go" binary. Update PATH or GOROOT appropriately');
-			return Promise.resolve();
+			const message = 'Cannot find "go" binary. Update PATH or GOROOT appropriately';
+			vscode.window.showInformationMessage(message);
+			outputChannel.appendLine(`Error: ${testType} failed.`);
+			outputChannel.appendLine(message);
+			resolve(new RawTestResult(false, [], [], new Error(message)));
+			return;
 		}
 
 		// Append the package name to args to enable running tests in symlinked directories
@@ -237,7 +226,9 @@ export function runGoTest(testconfig: TestConfig): Thenable<RawTestResult> {
 function expandFilePathInOutput(output: string, cwd: string): string {
 	let lines = output.split('\n');
 	for (let i = 0; i < lines.length; i++) {
-		let matches = lines[i].match(/^\s*(.+.go):(\d+):/);
+		// The path group is matched non-greedily and cannot contain whitespace,
+		// so a line holding two paths cannot bind the wrong one.
+		let matches = lines[i].match(/^\s*(\S+\.go):(\d+):/);
 		if (matches && matches[1] && !path.isAbsolute(matches[1])) {
 			lines[i] = lines[i].replace(matches[1], path.join(cwd, matches[1]));
 		}
@@ -251,25 +242,10 @@ function expandFilePathInOutput(output: string, cwd: string): string {
  * @param testconfig Configuration for the Go extension.
  */
 function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
-	if (testconfig.functions) {
-		let params: string[] = [];
-		if (testconfig.isBenchmark) {
-			params = ['-bench', util.format('^%s$', testconfig.functions.join('|'))];
-		} else {
-			let testFunctions = testconfig.functions;
-
-			if (testFunctions.length > 0) {
-				params = params.concat(['-run', util.format('^%s$', testFunctions.join('|'))]);
-			}
-
-		}
-		return Promise.resolve(params);
-	}
-	let params: string[] = [];
-	if (testconfig.isBenchmark) {
-		params = ['-bench', '.'];
-	}
-	return Promise.resolve(params);
+	return Promise.resolve(buildTargetArgs({
+		functions: testconfig.functions,
+		isBenchmark: testconfig.isBenchmark
+	}));
 }
 
 
