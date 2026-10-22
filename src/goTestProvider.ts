@@ -1,116 +1,265 @@
 import * as vscode from 'vscode';
-import * as path from "path";
+import * as path from 'path';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 
-
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
+  private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<
+    TestNode | undefined
+  >();
+  readonly onDidChangeTreeData: vscode.Event<TestNode | undefined> =
+    this._onDidChangeTreeData.event;
 
-	private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<TestNode | undefined>();
-	readonly onDidChangeTreeData: vscode.Event<TestNode | undefined> = this._onDidChangeTreeData.event;
+  private __discoveredTestsMap: Map<string, TestNode> = new Map();
+  private _discoveredTests: TestNode[] = [];
+  private _discovering: boolean;
+  /**
+   * The nodes whose result changed since the tree was last redrawn.
+   */
+  private readonly _pendingResults: Set<TestNode> = new Set();
+  constructor(
+    private context: vscode.ExtensionContext,
+    commands: Commands,
+  ) {
+    context.subscriptions.push(commands.discoveredTest(this.onDicoveredTest, this));
+    context.subscriptions.push(commands.testDiscoveryStarted(this.onDiscoverTestStart, this));
+    context.subscriptions.push(commands.testResult(this.updateTestResult, this));
+    context.subscriptions.push(commands.testOutcome(this.onTestOutcome, this));
+    context.subscriptions.push(commands.testRunStarted(this.onTestRunStarted, this));
+    context.subscriptions.push(commands.testCompleted(this.onTestRunCompleted, this));
+    context.subscriptions.push(commands.testFileChanged(this.onTestFileChanged, this));
+    context.subscriptions.push(commands.testFileRemoved(this.onTestFileRemoved, this));
+  }
 
-	private __discoveredTestsMap: Map<string, TestNode>;
-	private _discoveredTests: TestNode[];
-	private _discovering: boolean;
-	constructor(private context: vscode.ExtensionContext, commands: Commands) {
-		context.subscriptions.push(commands.discoveredTest(this.onDicoveredTest, this));
-		context.subscriptions.push(commands.testDiscoveryStarted(this.onDiscoverTestStart, this));
-		context.subscriptions.push(commands.testResult(this.updateTestResult, this));
-		context.subscriptions.push(commands.testRunStarted(this.onTestRunStarted, this));
-	}
+  private refresh(testNode?: TestNode): void {
+    this._pendingResults.clear();
+    this._onDidChangeTreeData.fire(testNode);
+  }
 
-	private refresh(testNode?: TestNode): void {
-		this._onDidChangeTreeData.fire(testNode);
-	}
+  getTreeItem(testNode: TestNode): vscode.TreeItem {
+    const treeItem = new vscode.TreeItem(
+      testNode.name,
+      testNode.isTestSuite
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.None,
+    );
 
-	getTreeItem(testNode: TestNode): vscode.TreeItem {
-		const treeItem = new vscode.TreeItem(testNode.name, testNode.isTestSuite ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
+    treeItem.contextValue = this._discovering
+      ? 'discovering'
+      : testNode.isTestSuite
+        ? 'testSuite'
+        : 'test';
 
-		treeItem.contextValue = this._discovering ? 'discovering' : testNode.isTestSuite ? 'testSuite' : 'test';
+    if (!testNode.isTestSuite) {
+      treeItem.command = {
+        command: 'goTestExplorer.goToLocation',
+        title: testNode.tooltip,
+        arguments: [testNode],
+      };
+    }
+    treeItem.iconPath = {
+      dark: this.context.asAbsolutePath(path.join('resources', 'dark', testNode.icon)),
+      light: this.context.asAbsolutePath(path.join('resources', 'light', testNode.icon)),
+    };
 
-		if (!testNode.isTestSuite) {
-			treeItem.command = {
-				command: 'goTestExplorer.goToLocation',
-				title: testNode.tooltip,
-				arguments: [testNode]
-			};
-		}
-		treeItem.iconPath = {
-			dark: this.context.asAbsolutePath(path.join("resources", "dark", testNode.icon)),
-			light: this.context.asAbsolutePath(path.join("resources", "light", testNode.icon))
-		};
+    return treeItem;
+  }
 
-		return treeItem;
-	}
+  getChildren(testNode?: TestNode): Thenable<TestNode[]> {
+    if (testNode) {
+      return Promise.resolve(testNode.children);
+    }
+    if (this._discovering) {
+      return Promise.resolve([new TestNode('Loading...', null)]);
+    }
+    return Promise.resolve(this._discoveredTests);
+  }
+  get discoveredTests(): TestNode[] {
+    return this._discoveredTests;
+  }
+  getDiscoveredTestNode(key: string): TestNode {
+    return this.__discoveredTestsMap.get(key);
+  }
 
-	getChildren(testNode?: TestNode): Thenable<TestNode[]> {
-		if (testNode) {
-			return Promise.resolve(testNode.children);
-		}
-		if (this._discovering) {
-			return Promise.resolve(
-				[new TestNode("Loading...", null)]);
-		}
-		return Promise.resolve(this._discoveredTests);
-	}
-	get discoveredTests(): TestNode[] {
-		return this._discoveredTests;
-	}
-	getDiscoveredTestNode(key: string): TestNode {
-		return this.__discoveredTestsMap.get(key);
-	}
+  /**
+   * Applies the outcome of a test.
+   *
+   * The tree is not redrawn here: the outcome of every test of a run arrives
+   * one after the other, and the tree is redrawn once when the run has
+   * finished.
+   */
+  private updateTestResult(testResult: TestResult) {
+    const testNode = this.__discoveredTestsMap.get(
+      this.getNodeKey(testResult.uri.fsPath, testResult.testName),
+    );
+    if (testNode) {
+      testNode.testResult = testResult;
+      this._pendingResults.add(testNode);
+    }
+  }
 
-	private updateTestResult(testResult: TestResult) {
+  /**
+   * Applies the outcome of a test that finished while its run is still going,
+   * and redraws the suite it belongs to, so the icon changes straight away.
+   */
+  private onTestOutcome(testResult: TestResult) {
+    this.updateTestResult(testResult);
+    const suite = this.__discoveredTestsMap.get(
+      this.getNodeKey(testResult.uri.fsPath, path.basename(testResult.uri.fsPath)),
+    );
+    const node =
+      suite ??
+      this.__discoveredTestsMap.get(this.getNodeKey(testResult.uri.fsPath, testResult.testName));
+    if (node) {
+      this.refresh(node);
+    }
+  }
+  private onDiscoverTestStart() {
+    this._discoveredTests = [];
+    this._discovering = true;
+    this.refresh();
+  }
+  private onDicoveredTest(testNodeList: TestNode[]) {
+    const previousMap = this.__discoveredTestsMap;
+    this._discoveredTests = testNodeList && testNodeList.length > 0 ? testNodeList : [];
 
-		let testNode = this.__discoveredTestsMap.get(this.getNodeKey(testResult.uri.fsPath, testResult.testName));
-		if (testNode) {
-			testNode.testResult = testResult;
-		}
-		this.refresh(testNode);
-	}
-	private onDiscoverTestStart() {
-		this._discoveredTests = [];
-		this._discovering = true;
-		this.refresh();
-	}
-	private onDicoveredTest(testNodeList: TestNode[]) {
-		this._discoveredTests = testNodeList && testNodeList.length > 0 ? testNodeList : [];
+    this.__discoveredTestsMap = new Map();
+    this._discoveredTests.forEach((x) => this.registerNodeTree(x, previousMap));
 
-		this.__discoveredTestsMap = new Map();
-		this._discoveredTests.forEach(x => {
-			if (x.isTestSuite) {
-				x.children.forEach(node => {
-					this.__discoveredTestsMap.set(this.getNodeKey(node.uri.fsPath, node.name), node);
-				});
-				this.__discoveredTestsMap.set(x.uri.fsPath, x);
-			} else {
-				this.__discoveredTestsMap.set(this.getNodeKey(x.uri.fsPath, x.name), x);
-			}
-		});
+    this._discovering = false;
+    this.refresh();
+  }
 
-		this._discovering = false;
-		this.refresh();
-	}
-	private onTestRunStarted(testNode: TestNode) {
-		testNode ? this.setLoading(testNode) : this.setAlloading();
-	}
-	private setLoading(testNode: TestNode) {
-		let tempNode = this.__discoveredTestsMap.get(this.getNodeKey(testNode.uri.fsPath, testNode.name));
-		if (tempNode) {
-			tempNode.setLoading();
-		}
-		this.refresh(tempNode);
-	}
-	private setAlloading() {
-		this.discoveredTests.
-			filter(s => s.isTestSuite).
-			forEach(s => s.children.forEach(t => t.setLoading()));
+  /**
+   * Replaces the node for one file, without rebuilding the rest of the
+   * tree.
+   *
+   * The outcome of tests that have already run is carried over, exactly as
+   * a full refresh does.
+   */
+  private onTestFileChanged(testNode: TestNode) {
+    const filePath = testNode.uri.fsPath;
+    const previous = this.takeEntriesFor(filePath);
 
-		this.refresh();
-	}
-	private getNodeKey(uri: string, nodeName: string): string {
-		return uri + "__" + nodeName;
-	}
+    const index = this._discoveredTests.findIndex((node) => node.uri.fsPath === filePath);
+    if (index >= 0) {
+      this._discoveredTests[index] = testNode;
+    } else {
+      this._discoveredTests.push(testNode);
+    }
+
+    this.registerNodeTree(testNode, previous);
+    this.refresh();
+  }
+
+  /**
+   * Drops the node for a file that no longer holds tests.
+   */
+  private onTestFileRemoved(filePath: string) {
+    const index = this._discoveredTests.findIndex((node) => node.uri.fsPath === filePath);
+    if (index >= 0) {
+      this._discoveredTests.splice(index, 1);
+    }
+    this.takeEntriesFor(filePath);
+    this.refresh();
+  }
+
+  /**
+   * Registers a node and, when it is a suite, its children.
+   */
+  private registerNodeTree(node: TestNode, previousMap: Map<string, TestNode>) {
+    if (node.isTestSuite) {
+      node.children.forEach((child) => this.registerNodeTree(child, previousMap));
+    }
+    this.registerNode(node, previousMap);
+  }
+
+  /**
+   * Removes the lookup entries for one file and returns them, so that the
+   * outcome of the tests it holds can be carried over to the new nodes.
+   */
+  private takeEntriesFor(filePath: string): Map<string, TestNode> {
+    const prefix = filePath + '__';
+    const taken = new Map<string, TestNode>();
+    this.__discoveredTestsMap.forEach((node, key) => {
+      if (key.startsWith(prefix)) {
+        taken.set(key, node);
+        this.__discoveredTestsMap.delete(key);
+      }
+    });
+    return taken;
+  }
+
+  /**
+   * Registers a node in the lookup map, carrying over the result of the
+   * matching node from the previous discovery so that a refresh does not
+   * discard the outcome of tests that have already run.
+   */
+  private registerNode(node: TestNode, previousMap: Map<string, TestNode>) {
+    const key = this.getNodeKey(node.uri.fsPath, node.name);
+    const previous = previousMap ? previousMap.get(key) : undefined;
+    if (previous && previous.testResult && !node.testResult) {
+      node.testResult = previous.testResult;
+    }
+    this.__discoveredTestsMap.set(key, node);
+  }
+  /**
+   * The tests of a run have started.
+   *
+   * Every test of the run is marked as running, and the tree is redrawn
+   * once for the whole run.
+   */
+  private onTestRunStarted(testNodes: TestNode[]) {
+    testNodes.forEach((testNode) => this.setLoading(testNode));
+    this.refresh(this.topNodeOf(testNodes));
+  }
+
+  /**
+   * The run that covers the given files has finished, so the tree is
+   * redrawn once with the outcome of every test of that run.
+   *
+   * A run that covered several files has no single node to redraw, so the
+   * whole tree is redrawn.
+   */
+  private onTestRunCompleted(testUris: vscode.Uri[]) {
+    if (testUris.length === 1) {
+      const testUri = testUris[0];
+      const suite = this.__discoveredTestsMap.get(
+        this.getNodeKey(testUri.fsPath, path.basename(testUri.fsPath)),
+      );
+      this.refresh(suite);
+      return;
+    }
+    this.refresh();
+  }
+
+  /**
+   * The node that holds the others, so the tree is redrawn once for the
+   * whole group.
+   *
+   * A group that spans several suites has no single node to redraw, so the
+   * whole tree is redrawn.
+   */
+  private topNodeOf(testNodes: TestNode[]): TestNode | undefined {
+    const tops = testNodes.filter(
+      (node) =>
+        !testNodes.some(
+          (other) => other !== node && other.isTestSuite && other.children.includes(node),
+        ),
+    );
+    return tops.length === 1 ? tops[0] : undefined;
+  }
+
+  private setLoading(testNode: TestNode) {
+    const tempNode = this.__discoveredTestsMap.get(
+      this.getNodeKey(testNode.uri.fsPath, testNode.name),
+    );
+    if (tempNode) {
+      tempNode.setLoading();
+    }
+  }
+  private getNodeKey(uri: string, nodeName: string): string {
+    return uri + '__' + nodeName;
+  }
 }
-

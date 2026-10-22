@@ -1,0 +1,26 @@
+{"Time":"2026-10-22T12:44:10.242367+05:30","Action":"start","Package":"probe"}
+{"Time":"2026-10-22T12:44:10.791884+05:30","Action":"run","Package":"probe","Test":"TestAlpha"}
+{"Time":"2026-10-22T12:44:10.791949+05:30","Action":"output","Package":"probe","Test":"TestAlpha","Output":"=== RUN   TestAlpha\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.791994+05:30","Action":"run","Package":"probe","Test":"TestAlpha/sub1"}
+{"Time":"2026-10-22T12:44:10.791999+05:30","Action":"output","Package":"probe","Test":"TestAlpha/sub1","Output":"=== RUN   TestAlpha/sub1\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792007+05:30","Action":"output","Package":"probe","Test":"TestAlpha/sub1","Output":"    a_test.go:7: boom\n","OutputType":"error"}
+{"Time":"2026-10-22T12:44:10.792014+05:30","Action":"output","Package":"probe","Test":"TestAlpha/sub1","Output":"--- FAIL: TestAlpha/sub1 (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792018+05:30","Action":"fail","Package":"probe","Test":"TestAlpha/sub1","Elapsed":0}
+{"Time":"2026-10-22T12:44:10.792023+05:30","Action":"output","Package":"probe","Test":"TestAlpha","Output":"--- FAIL: TestAlpha (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.79203+05:30","Action":"fail","Package":"probe","Test":"TestAlpha","Elapsed":0}
+{"Time":"2026-10-22T12:44:10.792033+05:30","Action":"run","Package":"probe","Test":"TestBeta"}
+{"Time":"2026-10-22T12:44:10.792036+05:30","Action":"output","Package":"probe","Test":"TestBeta","Output":"=== RUN   TestBeta\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792039+05:30","Action":"output","Package":"probe","Test":"TestBeta","Output":"    a_test.go:12: nope\n"}
+{"Time":"2026-10-22T12:44:10.792043+05:30","Action":"output","Package":"probe","Test":"TestBeta","Output":"--- SKIP: TestBeta (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792047+05:30","Action":"skip","Package":"probe","Test":"TestBeta","Elapsed":0}
+{"Time":"2026-10-22T12:44:10.792049+05:30","Action":"run","Package":"probe","Test":"TestGamma"}
+{"Time":"2026-10-22T12:44:10.792055+05:30","Action":"output","Package":"probe","Test":"TestGamma","Output":"=== RUN   TestGamma\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792058+05:30","Action":"run","Package":"probe","Test":"TestGamma/ok"}
+{"Time":"2026-10-22T12:44:10.792061+05:30","Action":"output","Package":"probe","Test":"TestGamma/ok","Output":"=== RUN   TestGamma/ok\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792065+05:30","Action":"output","Package":"probe","Test":"TestGamma/ok","Output":"--- PASS: TestGamma/ok (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792068+05:30","Action":"pass","Package":"probe","Test":"TestGamma/ok","Elapsed":0}
+{"Time":"2026-10-22T12:44:10.792071+05:30","Action":"output","Package":"probe","Test":"TestGamma","Output":"--- PASS: TestGamma (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792073+05:30","Action":"pass","Package":"probe","Test":"TestGamma","Elapsed":0}
+{"Time":"2026-10-22T12:44:10.792075+05:30","Action":"output","Package":"probe","Output":"FAIL\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792343+05:30","Action":"output","Package":"probe","Output":"FAIL\tprobe\t0.549s\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:10.792356+05:30","Action":"fail","Package":"probe","Elapsed":0.55}
