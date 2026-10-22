@@ -76,9 +76,19 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  // On Windows the build cache or a test binary can still hold the directory
-  // for a moment after the run, so retry instead of failing the suite.
-  fs.rmSync(fixture, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  // On Windows a test binary that was killed in the middle of a run keeps its
+  // working directory locked for a moment, so wait for it instead of failing
+  // the suite. A folder that is still locked after that is left for the
+  // operating system to clear from the temp directory: it is not a failure
+  // of the code under test.
+  try {
+    fs.rmSync(fixture, { recursive: true, force: true, maxRetries: 50, retryDelay: 200 });
+  } catch (error) {
+    const locked = ['EBUSY', 'EPERM', 'ENOTEMPTY'];
+    if (!locked.includes((error as NodeJS.ErrnoException).code ?? '')) {
+      throw error;
+    }
+  }
 });
 
 beforeEach(() => {
