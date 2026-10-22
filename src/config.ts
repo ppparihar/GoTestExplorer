@@ -80,6 +80,14 @@ export class Config {
   }
 
   /**
+   * Whether the `files.exclude` setting of the workspace also leaves paths out
+   * of the tree, when the user has not said otherwise.
+   */
+  public static get DefaultUseFilesExclude(): boolean {
+    return true;
+  }
+
+  /**
    * Whether a test file that holds no test function is listed, when the user
    * has not said otherwise.
    */

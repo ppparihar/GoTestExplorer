@@ -11,6 +11,7 @@ Run and explore Go tests in a tree view inside Visual Studio Code.
 - Filter the tests by name and by status (failed, passed, not run); "Run All" then runs only what is shown
 - Show code coverage for runs started from the view: covered and uncovered lines in the editor, the overall figure in the view header, and the coverage of each test file
 - Build tags: set them from the view menu ("Set Build Tags..."); test files that the tags leave out are marked, and not run
+- Load only the folders you work on in a large workspace (`includePaths`, `excludePaths`, and the workspace `files.exclude`)
 - Cancel running tests (kills the process tree)
 - Show test output in a terminal (with colors) or an output channel
 - Respects `go.*` settings as fallback; configurable via `goTestExplorer.*`
@@ -20,7 +21,7 @@ Run and explore Go tests in a tree view inside Visual Studio Code.
 - The [Go extension](https://marketplace.visualstudio.com/items?itemName=golang.go) is optional
 
 ## Configuration
-See the extension settings for `goTestExplorer.*`: `maxParallelTests`, `maxPackagesPerRun`, `skipFolders`, `goPath`, `goBinary`, `testFlags`, `buildTags`, `timeout`, `envFile`, `env`, `runInTerminal`, `showFilesWithoutTests`.
+See the extension settings for `goTestExplorer.*`: `maxParallelTests`, `maxPackagesPerRun`, `includePaths`, `excludePaths`, `useFilesExclude`, `skipFolders`, `goPath`, `goBinary`, `testFlags`, `buildTags`, `timeout`, `envFile`, `env`, `runInTerminal`, `showFilesWithoutTests`.
 
 ## Development
 ```bash

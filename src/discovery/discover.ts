@@ -34,6 +34,10 @@ export interface DiscoverOptions {
    * The folders the user asked to skip are used when this is not given.
    */
   readonly skipFolders?: string[];
+  /**
+   * Tells whether a path is left out of the walk. See `FindTestFilesOptions`.
+   */
+  readonly skip?: (fullPath: string, isDirectory: boolean) => boolean;
 }
 
 /**
@@ -52,6 +56,7 @@ export async function discoverTests(
 ): Promise<DiscoveredSuite[]> {
   const files = await findTestFiles(root, {
     skipFolders: options?.skipFolders ?? skipFolders(),
+    skip: options?.skip,
     concurrency: Config.DiscoveryConcurrency,
   });
 

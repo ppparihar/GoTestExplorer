@@ -7,7 +7,8 @@ import { discoverTests, DiscoveredSuite } from './discovery/discover';
 import { isInSkippedFolder } from './discovery/fileWalker';
 import { ScanCache } from './discovery/scanCache';
 import { GoTestDecl } from './discovery/goScanner';
-import { skipFolders } from './lib/settings';
+import { excludePatterns, includePaths, skipFolders } from './lib/settings';
+import { createScope, isFileLeftOut } from './discovery/scope';
 
 export class TestDiscovery {
   private readonly cache = new ScanCache();
@@ -48,6 +49,28 @@ export class TestDiscovery {
     private context: vscode.ExtensionContext,
   ) {
     this.watchForTestFiles();
+    this.rediscoverWhenTheScopeChanges();
+  }
+
+  /**
+   * Discovers the tests again when a setting that decides which paths are
+   * loaded changes, so the tree follows it without a manual refresh.
+   */
+  private rediscoverWhenTheScopeChanges() {
+    this.context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        const settings = [
+          'goTestExplorer.includePaths',
+          'goTestExplorer.excludePaths',
+          'goTestExplorer.useFilesExclude',
+          'goTestExplorer.skipFolders',
+          'files.exclude',
+        ];
+        if (settings.some((setting) => event.affectsConfiguration(setting))) {
+          this.discoverAllTests();
+        }
+      }),
+    );
   }
 
   discoverAllTests() {
@@ -83,18 +106,58 @@ export class TestDiscovery {
   }
 
   /**
-   * Discovers the tests under a single workspace folder. A folder with a
-   * `src` directory is scanned from there, otherwise from the folder root.
+   * Discovers the tests under a single workspace folder: in the folders the
+   * user chose to load, or in the whole folder, or its `src` folder, when
+   * none was chosen. The paths that are left out are not walked.
    */
   private async discoverFolderTests(folderUri: vscode.Uri): Promise<TestNode[]> {
-    const srcLocation = path.join(folderUri.fsPath, 'src');
-    const root = (await directoryExists(srcLocation)) ? srcLocation : folderUri.fsPath;
-    this.roots.push(root);
-    return this.discoverTests(vscode.Uri.file(root));
+    const roots = await this.rootsOf(folderUri);
+    const leftOut = createScope(folderUri.fsPath, excludePatterns(folderUri));
+    this.roots.push(...roots);
+    const results = await Promise.all(
+      roots.map((root) => this.discoverTests(vscode.Uri.file(root), leftOut)),
+    );
+    return ([] as TestNode[]).concat(...results);
   }
 
-  async discoverTests(uri: vscode.Uri): Promise<TestNode[]> {
-    const suites = await discoverTests(uri.fsPath, { cache: this.cache });
+  /**
+   * The folders to walk for one workspace folder.
+   *
+   * The folders the user listed in `goTestExplorer.includePaths` are walked, and
+   * a listed folder that is not there is reported. Without a list a folder with
+   * a `src` directory is scanned from there, otherwise from the folder root.
+   */
+  private async rootsOf(folderUri: vscode.Uri): Promise<string[]> {
+    const wanted = includePaths(folderUri);
+    if (wanted.length === 0) {
+      const srcLocation = path.join(folderUri.fsPath, 'src');
+      return [(await directoryExists(srcLocation)) ? srcLocation : folderUri.fsPath];
+    }
+
+    const existing: string[] = [];
+    const missing: string[] = [];
+    for (const entry of wanted) {
+      const resolved = path.resolve(folderUri.fsPath, entry);
+      if (await directoryExists(resolved)) {
+        existing.push(resolved);
+      } else {
+        missing.push(entry);
+      }
+    }
+    if (missing.length > 0) {
+      vscode.window.showWarningMessage(
+        `Go Test Explorer: goTestExplorer.includePaths names folders that do not exist: ${missing.join(', ')}`,
+      );
+    }
+    // A folder inside another that is walked is walked with it, so it is not
+    // listed twice.
+    return existing.filter(
+      (root) => !existing.some((other) => other !== root && isUnder(other, root)),
+    );
+  }
+
+  async discoverTests(uri: vscode.Uri, skip?: (fullPath: string, isDirectory: boolean) => boolean) {
+    const suites = await discoverTests(uri.fsPath, { cache: this.cache, skip });
     return suites.map((suite) => {
       this.warnIfUnconfident(suite);
       return this.buildSuiteNode(suite.file, suite.declarations, suite.constraint);
@@ -240,6 +303,10 @@ export class TestDiscovery {
    */
   private isInScope(filePath: string): boolean {
     if (isInSkippedFolder(filePath, skipFolders())) {
+      return false;
+    }
+    const folder = this.workspaceFolders.find((candidate) => isUnder(candidate, filePath));
+    if (folder && isFileLeftOut(folder, filePath, excludePatterns(vscode.Uri.file(folder)))) {
       return false;
     }
     return this.roots.some((root) => isUnder(root, filePath));

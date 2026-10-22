@@ -8,6 +8,12 @@ export interface FindTestFilesOptions {
    */
   readonly skipFolders: readonly string[];
   /**
+   * Tells whether a path is left out, for the rules that depend on more than
+   * the name of a folder. It is asked for every folder before it is entered,
+   * and for every test file.
+   */
+  readonly skip?: (fullPath: string, isDirectory: boolean) => boolean;
+  /**
    * The maximum number of directories read at the same time.
    */
   readonly concurrency: number;
@@ -34,6 +40,7 @@ export async function findTestFiles(
   options: FindTestFilesOptions,
 ): Promise<string[]> {
   const skip = new Set(options.skipFolders);
+  const leftOut = options.skip ?? (() => false);
   const concurrency = Math.max(1, options.concurrency);
 
   const files: string[] = [];
@@ -63,7 +70,7 @@ export async function findTestFiles(
         const fullPath = path.join(directory, entry.name);
 
         if (entry.isDirectory()) {
-          if (!skip.has(entry.name)) {
+          if (!skip.has(entry.name) && !leftOut(fullPath, true)) {
             directories.push(fullPath);
           }
           continue;
@@ -78,19 +85,27 @@ export async function findTestFiles(
             // The path under the workspace is kept, so the file the
             // user sees is the one they opened; the real path is
             // only used to detect a cycle.
-            if (!skip.has(entry.name) && !visited.has(resolved.realPath)) {
+            if (
+              !skip.has(entry.name) &&
+              !leftOut(fullPath, true) &&
+              !visited.has(resolved.realPath)
+            ) {
               visited.add(resolved.realPath);
               directories.push(fullPath);
             }
             continue;
           }
-          if (resolved.isFile && entry.name.endsWith(TEST_FILE_SUFFIX)) {
+          if (
+            resolved.isFile &&
+            entry.name.endsWith(TEST_FILE_SUFFIX) &&
+            !leftOut(fullPath, false)
+          ) {
             files.push(fullPath);
           }
           continue;
         }
 
-        if (entry.isFile() && entry.name.endsWith(TEST_FILE_SUFFIX)) {
+        if (entry.isFile() && entry.name.endsWith(TEST_FILE_SUFFIX) && !leftOut(fullPath, false)) {
           files.push(fullPath);
         }
       }
