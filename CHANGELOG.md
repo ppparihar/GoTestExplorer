@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- A test file that has no `Test` function, such as a file of helpers that another test runs with `t.Run`, no longer looks like a test. Clicking it used to fail with "Could not find test (no symbols matching)", and its run button ran nothing and could report a pass. It now shows as a file marked "no tests", without a run button, and a click opens the file.
+
+## Unreleased
+
 ### Added
 - A filter button (funnel icon) in the title of the test view. It opens one box for the whole filter: type words of a test or file name, and tick Failed, Passed or Not run. The tree follows the box as you type and tick (Enter keeps the filter, Escape puts back the previous one). "Run All" and the run button of a file then run only the tests that are shown, for example only the failed ones. The button turns into "Clear Filter" while a filter is on. The view also has one button that collapses all the test files, and turns into one that expands them again. (#26, #15)
 

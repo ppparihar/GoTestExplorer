@@ -52,6 +52,31 @@ describe('GoTestProvider', () => {
     expect((await provider.getChildren(suite)).length).toBe(2);
   });
 
+  it('shows a file with no test function as a file, not as a test', () => {
+    // `testHealth(t)` is a helper that another test runs, so the file has no
+    // Test function and the scan found nothing in it.
+    const file = new TestNode('health_test.go', fileUri, []);
+    commands.sendDiscoveredTests([file]);
+
+    const item = provider.getTreeItem(file);
+
+    // There is no run button, because the context is neither test nor suite.
+    expect(item.contextValue).toBe('emptyTestFile');
+    expect(item.description).toBe('no tests');
+    // A click opens the file, and does not look for a test named like it.
+    expect((item.command as { command: string }).command).toBe('vscode.open');
+    expect((item.command as { arguments: unknown[] }).arguments[0]).toBe(fileUri);
+  });
+
+  it('still treats a single test as a test', () => {
+    const test = new TestNode('TestAlpha', fileUri);
+
+    const item = provider.getTreeItem(test);
+
+    expect(item.contextValue).toBe('test');
+    expect((item.command as { command: string }).command).toBe('goTestExplorer.goToLocation');
+  });
+
   it('applies a test result to the matching node', () => {
     commands.sendDiscoveredTests([buildSuite()]);
 

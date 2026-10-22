@@ -10,6 +10,20 @@ export class TestNode {
     public uri: vscode.Uri,
     private _children?: TestNode[],
   ) {}
+  /**
+   * Whether the node stands for a test file, rather than for one test. A file
+   * has a list of tests, even when the list is empty.
+   */
+  get isFile(): boolean {
+    return this._children !== undefined;
+  }
+  /**
+   * Whether the node stands for a test file that holds no test function. Such
+   * a file has nothing to run: its helpers are run by a test of another file.
+   */
+  get isEmptyFile(): boolean {
+    return this.isFile && this._children.length === 0;
+  }
   get isTestSuite(): boolean {
     return !!this._children && this._children.length > 0;
   }

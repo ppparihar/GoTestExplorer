@@ -96,6 +96,10 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
         : vscode.TreeItemCollapsibleState.None,
     );
 
+    if (testNode.isEmptyFile && !this._discovering) {
+      return this.emptyFileItem(testNode, treeItem);
+    }
+
     treeItem.contextValue = this._discovering
       ? 'discovering'
       : testNode.isTestSuite
@@ -114,6 +118,28 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
       light: this.context.asAbsolutePath(path.join('resources', 'light', testNode.icon)),
     };
 
+    return treeItem;
+  }
+
+  /**
+   * The row of a test file that holds no test function.
+   *
+   * It is not a test: it has no run button, and a click opens the file
+   * instead of looking for a test named like it. It says why it is there, since
+   * a file of helpers that another test calls looks like a test file.
+   */
+  private emptyFileItem(testNode: TestNode, treeItem: vscode.TreeItem): vscode.TreeItem {
+    treeItem.contextValue = 'emptyTestFile';
+    treeItem.description = 'no tests';
+    treeItem.tooltip =
+      'This file has no Test functions, so there is nothing to run here. ' +
+      'Its helpers may be run by a test in another file.';
+    treeItem.iconPath = new vscode.ThemeIcon('file');
+    treeItem.command = {
+      command: 'vscode.open',
+      title: 'Open file',
+      arguments: [testNode.uri],
+    };
     return treeItem;
   }
 
