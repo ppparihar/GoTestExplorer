@@ -12,7 +12,8 @@ import { scanGoSource } from './discovery/goScanner';
 import { FinishedTest, hasFailed, PackageResult } from './exec/goTestJsonParser';
 import { findGoModule, GoModule, importPathOf } from './lib/goModule';
 import { testOutput } from './lib/testOutput';
-import { maxParallelTests, runSettings } from './lib/settings';
+import { maxPackagesPerRun, maxParallelTests, runSettings } from './lib/settings';
+import { argumentBudget, chunkPackages, mergeResults } from './runner/chunkPackages';
 
 /**
  * The files of one module, and the packages they belong to.
@@ -42,13 +43,18 @@ export class GoTestExplorer {
    * going, so that the end of the run does not draw them again.
    */
   private readonly reported = new WeakMap<TestConfig, Set<string>>();
+  /**
+   * Counts the cancellations. A run that was split into several runs stops
+   * starting the next one when the count has changed since it began.
+   */
+  private cancellations = 0;
 
   constructor(context: vscode.ExtensionContext) {
     this.commands = new Commands();
     this.goTestProvider = new GoTestProvider(context, this.commands);
     const testDiscoverer = new TestDiscovery(this.commands, context);
     this.testQueue = new TestQueue(
-      (testConfig) => runGoTest(testConfig),
+      (testConfig) => this.runInChunks(testConfig),
       // The limit is read for every run, so a change to the setting
       // takes effect without reloading the window.
       () => maxParallelTests(),
@@ -71,6 +77,7 @@ export class GoTestExplorer {
     const cancelTestRun = () => {
       // The invocations that have not started are dropped, and the ones
       // that are running are killed.
+      this.cancellations++;
       this.testQueue.cancel();
       const stopped = cancelRunningTests();
       if (stopped === 0) {
@@ -203,6 +210,46 @@ export class GoTestExplorer {
       testName: path.basename(testNode.uri.fsPath),
     };
     return testConfig;
+  }
+
+  /**
+   * Runs a module in as few runs as the system allows.
+   *
+   * The packages are tested in one process, which compiles them once and
+   * lets the tool spread them over the cores. A module with so many packages
+   * that their names would not fit a command line is split into runs that
+   * follow one another: they are not started together, because the tool already
+   * uses the cores, and more processes would only compete for them.
+   *
+   * The outcome of each test is shown as its run reports it, and the result of
+   * the module is read from the runs together. A cancel stops the run that is
+   * going and the ones that have not started.
+   */
+  private async runInChunks(testConfig: TestConfig): Promise<RawTestResult> {
+    const packages = testConfig.packages;
+    if (!packages || packages.length < 2) {
+      return runGoTest(testConfig);
+    }
+    const chunks = chunkPackages(packages, {
+      maxPackages: maxPackagesPerRun(testConfig.testUri),
+      maxArgChars: argumentBudget(),
+    });
+    if (chunks.length <= 1) {
+      return runGoTest(testConfig);
+    }
+
+    const cancellations = this.cancellations;
+    const results: RawTestResult[] = [];
+    for (const chunk of chunks) {
+      if (cancellations !== this.cancellations) {
+        // Nothing was started for the packages that are left, so the module
+        // did not pass.
+        results.push(new RawTestResult(false, [], [], new Error('The test run was cancelled.')));
+        break;
+      }
+      results.push(await runGoTest({ ...testConfig, packages: chunk }));
+    }
+    return mergeResults(results);
   }
 
   private enqueueTest(testConfig: TestConfig) {

@@ -10,6 +10,7 @@ import {
 } from './goPath';
 import { getCurrentGoPath, getTestEnvVars, getToolsGopath, LineBuffer } from './utils';
 import { buildTargetArgs } from './testArgs';
+import { packageArgument } from '../runner/chunkPackages';
 import { testOutput } from './testOutput';
 import { RunSettings, goBinary, goPath } from './settings';
 import { RawTestResult } from '../rawTestResult';
@@ -430,9 +431,7 @@ export function expandFilePathInOutputLine(line: string, cwd: string): string {
  */
 function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
   if (testconfig.packages && testconfig.packages.length > 0) {
-    return Promise.resolve(
-      testconfig.packages.map((pkg) => (pkg.path === '' ? '.' : './' + pkg.path)),
-    );
+    return Promise.resolve(testconfig.packages.map((pkg) => packageArgument(pkg.path)));
   }
   return Promise.resolve(
     buildTargetArgs({

@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as cp from 'child_process';
 import { runGoTest, isToolAvailable, cancelRunningTests } from '../lib/testUtil';
 import { buildRunRegex } from '../lib/testArgs';
+import { chunkPackages, mergeResults } from '../runner/chunkPackages';
 import {
   __state,
   __reset,
@@ -277,6 +278,35 @@ func TestOther(t *testing.T) {}
 
     expect(result.isPassed).toBe(true);
     expect(result.output.join('\n')).not.toContain('=== RUN   TestPassingExtra');
+  });
+});
+
+describe.skipIf(!hasGo)('a module that is tested in runs that follow one another', () => {
+  it('joins the outcome of every run into one result', async () => {
+    const dirA = path.join(fixture, 'a');
+    const dirB = path.join(fixture, 'b');
+    fs.mkdirSync(dirA, { recursive: true });
+    fs.mkdirSync(dirB, { recursive: true });
+    fs.writeFileSync(path.join(dirA, 'a_test.go'), PASSING);
+    fs.writeFileSync(path.join(dirB, 'b_test.go'), FAILING);
+    const packages = [
+      { importPath: 'gotestexplorerfixture/a', path: 'a' },
+      { importPath: 'gotestexplorerfixture/b', path: 'b' },
+    ];
+
+    // The chunks the extension would make with one package to a run.
+    const chunks = chunkPackages(packages, { maxPackages: 1, maxArgChars: 100000 });
+    const results = [];
+    for (const chunk of chunks) {
+      results.push(await runPackages(chunk));
+    }
+    const merged = mergeResults(results);
+
+    expect(chunks.length).toBe(2);
+    expect(merged.isPassed).toBe(false);
+    expect(merged.packages.get('gotestexplorerfixture/a')?.failed).toBe(false);
+    expect(merged.packages.get('gotestexplorerfixture/b')?.failedTests).toContain('TestFailing');
+    expect(merged.failedTests).toContain('TestFailing');
   });
 });
 

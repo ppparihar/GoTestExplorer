@@ -8,7 +8,7 @@ import { TestNode } from '../testNode';
 import { TestResult } from '../testResult';
 import { RawTestResult } from '../rawTestResult';
 import { PackageResult } from '../exec/goTestJsonParser';
-import { __reset, __setDocumentText, __state, Uri } from './mocks/vscode';
+import { __reset, __setConfiguration, __setDocumentText, __state, Uri } from './mocks/vscode';
 import { testOutput } from '../lib/testOutput';
 
 const runGoTest = vi.fn();
@@ -352,6 +352,125 @@ describe('GoTestExplorer runs a whole module', () => {
 
     expect(outcomes.length).toBe(1);
     expect(outcomes[0].uri.fsPath).toBe(b.uri.fsPath);
+  });
+
+  describe('a module with more packages than one run takes', () => {
+    const importPathOf = (name: string) => `example.com/mod/pkg/${name}`;
+
+    const fivePackages = () =>
+      ['a', 'b', 'c', 'd', 'e'].map((name) =>
+        suiteIn(path.join(moduleDir, 'pkg', name), `${name}_test.go`, [
+          `Test${name.toUpperCase()}`,
+        ]),
+      );
+
+    const passedPackage = (name: string): PackageResult => ({
+      package: importPathOf(name),
+      tests: new Map(),
+      failedTests: [],
+      output: [],
+      failed: false,
+      buildFailed: false,
+    });
+
+    const passed = (names: string[]) =>
+      new RawTestResult(
+        true,
+        [],
+        [],
+        undefined,
+        new Map(names.map((name) => [importPathOf(name), passedPackage(name)] as const)),
+      );
+
+    beforeEach(() => {
+      __setConfiguration('goTestExplorer', { maxPackagesPerRun: 2 });
+    });
+
+    it('runs it in runs that follow one another, not together', async () => {
+      explorer.commands.sendDiscoveredTests(fivePackages());
+      let active = 0;
+      let mostActive = 0;
+      runGoTest.mockImplementation(async (config) => {
+        active++;
+        mostActive = Math.max(mostActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        active--;
+        return passed(config.packages.map((p: { path: string }) => p.path.split('/').pop()));
+      });
+
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+      await waitFor(() => completed.length > 0);
+
+      expect(runGoTest.mock.calls.map((call) => call[0].packages.length)).toEqual([2, 2, 1]);
+      expect(mostActive).toBe(1);
+    });
+
+    it('covers every package once', async () => {
+      explorer.commands.sendDiscoveredTests(fivePackages());
+      runGoTest.mockImplementation(async (config) =>
+        passed(config.packages.map((p: { path: string }) => p.path.split('/').pop())),
+      );
+
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+      await waitFor(() => completed.length > 0);
+
+      const run = runGoTest.mock.calls.flatMap((call) =>
+        call[0].packages.map((p: { importPath: string }) => p.importPath),
+      );
+      expect(run.sort()).toEqual(['a', 'b', 'c', 'd', 'e'].map(importPathOf));
+    });
+
+    it('reads the outcome of a package from the run that tested it', async () => {
+      explorer.commands.sendDiscoveredTests(fivePackages());
+      runGoTest.mockImplementation(async (config) => {
+        const names = config.packages.map((p: { path: string }) => p.path.split('/').pop());
+        const result = passed(names);
+        if (names.includes('c')) {
+          // The run that holds package c failed in c only.
+          const failing = result.packages.get(importPathOf('c'));
+          result.packages = new Map(result.packages).set(importPathOf('c'), {
+            ...failing,
+            failed: true,
+            failedTests: ['TestC'],
+          } as never);
+          return new RawTestResult(false, [], ['TestC'], undefined, result.packages);
+        }
+        return result;
+      });
+
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+      await waitFor(() => completed.length > 0);
+
+      const failed = results.filter((r) => !r.isPassed).map((r) => r.testName);
+      expect(failed.sort()).toEqual(['TestC', 'c_test.go']);
+    });
+
+    it('does not start the runs that are left when the user cancels', async () => {
+      explorer.commands.sendDiscoveredTests(fivePackages());
+      runGoTest.mockImplementation(async () => {
+        // The user cancels while the first run is going.
+        await vscode.commands.executeCommand('goTestExplorer.cancelTestRun');
+        return new RawTestResult(false, [], []);
+      });
+
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+      await waitFor(() => completed.length > 0);
+
+      expect(runGoTest.mock.calls.length).toBe(1);
+      // Nothing was tested for the rest, so none of it passed.
+      expect(results.every((r) => !r.isPassed)).toBe(true);
+    });
+
+    it('does not split a module when the setting is zero and it fits', async () => {
+      __setConfiguration('goTestExplorer', { maxPackagesPerRun: 0 });
+      explorer.commands.sendDiscoveredTests(fivePackages());
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], []));
+
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+      await waitFor(() => completed.length > 0);
+
+      expect(runGoTest.mock.calls.length).toBe(1);
+    });
   });
 
   it('runs the files of one package in one process', async () => {

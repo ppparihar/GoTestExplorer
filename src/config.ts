@@ -115,4 +115,14 @@ export class Config {
   public static get OutcomeRedrawMaxSuites(): number {
     return 20;
   }
+
+  /**
+   * The most packages in one `go test` run when the user has not set a number.
+   *
+   * Zero means the number is not limited, and the packages are split only when
+   * their arguments would be too long for a command line.
+   */
+  public static get DefaultMaxPackagesPerRun(): number {
+    return 0;
+  }
 }
