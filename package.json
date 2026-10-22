@@ -127,8 +127,13 @@
         "menus": {
             "view/title": [
                 {
+                    "command": "goTestExplorer.collapseAll",
+                    "when": "view == goTestExplorer && goTestExplorer.allExpanded",
+                    "group": "navigation@5"
+                },
+                {
                     "command": "goTestExplorer.expandAll",
-                    "when": "view == goTestExplorer",
+                    "when": "view == goTestExplorer && !goTestExplorer.allExpanded",
                     "group": "navigation@5"
                 },
                 {
@@ -178,6 +183,11 @@
             ]
         },
         "commands": [
+            {
+                "command": "goTestExplorer.collapseAll",
+                "title": "Collapse All",
+                "icon": "$(collapse-all)"
+            },
             {
                 "command": "goTestExplorer.expandAll",
                 "title": "Expand All",

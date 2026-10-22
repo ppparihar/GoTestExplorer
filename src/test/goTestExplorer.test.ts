@@ -374,6 +374,22 @@ describe('GoTestExplorer runs a whole module', () => {
     expect(__state.revealed[0].options).toMatchObject({ expand: true });
   });
 
+  it('collapses every file with the command of the view, and shows the other button', async () => {
+    const contexts: unknown[][] = [];
+    const collapsed: string[] = [];
+    __state.registeredCommands.set('setContext', (...args) => contexts.push(args));
+    __state.registeredCommands.set('workbench.actions.treeView.goTestExplorer.collapseAll', () =>
+      collapsed.push('collapseAll'),
+    );
+
+    await vscode.commands.executeCommand('goTestExplorer.collapseAll');
+    expect(collapsed).toEqual(['collapseAll']);
+    expect(contexts.pop()).toEqual(['goTestExplorer.allExpanded', false]);
+
+    await vscode.commands.executeCommand('goTestExplorer.expandAll');
+    expect(contexts.pop()).toEqual(['goTestExplorer.allExpanded', true]);
+  });
+
   describe('the filter box', () => {
     const openBox = async () => {
       await vscode.commands.executeCommand('goTestExplorer.filterTests');

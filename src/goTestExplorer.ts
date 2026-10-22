@@ -71,8 +71,6 @@ export class GoTestExplorer {
     );
     this.treeView = vscode.window.createTreeView('goTestExplorer', {
       treeDataProvider: this.goTestProvider,
-      // The collapse-all button of the view collapses every file.
-      showCollapseAll: true,
     });
     context.subscriptions.push(this.treeView);
 
@@ -90,6 +88,10 @@ export class GoTestExplorer {
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.expandAll', this.onExpandAll.bind(this)),
     );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.collapseAll', this.onCollapseAll.bind(this)),
+    );
+    this.showExpanded(true);
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.filterTests', this.onFilterTests.bind(this)),
     );
@@ -139,13 +141,31 @@ export class GoTestExplorer {
     testDiscoverer.discoverAllTests();
   }
   /**
-   * Expands every file that is shown. Collapsing is done by the collapse-all
-   * button of the view.
+   * Expands every file that is shown.
+   *
+   * The view has one button for expanding and collapsing: this is the one it
+   * shows while the files are collapsed.
    */
   private async onExpandAll() {
+    this.showExpanded(true);
     for (const suite of this.goTestProvider.visibleTests.filter((s) => s.isTestSuite)) {
       await this.treeView.reveal(suite, { expand: true, select: false, focus: false });
     }
+  }
+
+  /**
+   * Collapses every file, with the command the view itself has for it.
+   */
+  private async onCollapseAll() {
+    this.showExpanded(false);
+    await vscode.commands.executeCommand('workbench.actions.treeView.goTestExplorer.collapseAll');
+  }
+
+  /**
+   * Tells the title of the view which of the two buttons to show.
+   */
+  private showExpanded(expanded: boolean) {
+    vscode.commands.executeCommand('setContext', 'goTestExplorer.allExpanded', expanded);
   }
 
   /**
