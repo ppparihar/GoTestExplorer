@@ -1,0 +1,8 @@
+{"Time":"2026-10-22T12:44:28.977459+05:30","Action":"start","Package":"probe"}
+{"Time":"2026-10-22T12:44:29.517604+05:30","Action":"run","Package":"probe","Test":"TestAllPass"}
+{"Time":"2026-10-22T12:44:29.517683+05:30","Action":"output","Package":"probe","Test":"TestAllPass","Output":"=== RUN   TestAllPass\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:29.517742+05:30","Action":"output","Package":"probe","Test":"TestAllPass","Output":"--- PASS: TestAllPass (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:29.517753+05:30","Action":"pass","Package":"probe","Test":"TestAllPass","Elapsed":0}
+{"Time":"2026-10-22T12:44:29.517767+05:30","Action":"output","Package":"probe","Output":"PASS\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:29.519202+05:30","Action":"output","Package":"probe","Output":"ok  \tprobe\t0.541s\n"}
+{"Time":"2026-10-22T12:44:29.521564+05:30","Action":"pass","Package":"probe","Elapsed":0.544}

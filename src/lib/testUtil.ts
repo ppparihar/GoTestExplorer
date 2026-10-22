@@ -6,6 +6,7 @@ import { getBinPathWithPreferredGopath, getBinPathFromEnvVar, envPath } from './
 import { getCurrentGoPath, getTestEnvVars, getToolsGopath, LineBuffer } from './utils';
 import { buildTargetArgs, resolveTestTimeout } from './testArgs';
 import { RawTestResult } from '../rawTestResult';
+import { GoTestJsonParser } from '../exec/goTestJsonParser';
 //const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const sendSignal = 'SIGKILL';
 
@@ -99,7 +100,9 @@ export function runGoTest(testconfig: TestConfig): Promise<RawTestResult> {
 
 		let buildTags: string = testconfig.goConfig['buildTags'];
 		let testFlags: Array<string> = testconfig.goConfig['testFlags'] || [];
-		let args: Array<string> = ['test', ...testconfig.flags];
+		// The tool writes a JSON event per line, so the outcome of every
+		// test is read from the stream rather than scraped from the text.
+		let args: Array<string> = ['test', '-json', ...testconfig.flags];
 		let testType: string = testconfig.isBenchmark ? 'Benchmarks' : 'Tests';
 
 		if (testconfig.isBenchmark) {
@@ -144,43 +147,29 @@ export function runGoTest(testconfig: TestConfig): Promise<RawTestResult> {
 			args.push(...targets);
 
 			let tp = cp.spawn(goRuntimePath, args, { env: testEnvVars, cwd: testconfig.dir });
-			const outBuf = new LineBuffer();
+			const parser = new GoTestJsonParser();
 			const errBuf = new LineBuffer();
 
-			const packageResultLineRE = /^(--- FAIL:)[ \t]+(.+?)[ \t]+(\([0-9\.]+s\)|\(cached\))/; // 1=ok/FAIL, 2=package, 3=time/(cached)
-			//const packageResultLineRE = /^(ok|FAIL)[ \t]+(.+?)[ \t]+([0-9\.]+s|\(cached\))/; // 1=ok/FAIL, 2=package, 3=time/(cached)
-			const testResultLines: string[] = [];
-			const failedTests: string[] = [];
-			const processTestResultLine = (line: string) => {
-				testResultLines.push(line);
-				const result = line.match(packageResultLineRE);
-				if (result) {
-					failedTests.push(result[2]);
-				}
-			};
-
-			// go test emits test results on stdout, which contain file names relative to the package under test
-			outBuf.onLine(line => processTestResultLine(line));
-			outBuf.onDone(last => {
-				if (last) processTestResultLine(last);
-
-				// If there are any remaining test result lines, emit them to the output channel.
-				if (testResultLines.length > 0) {
-					testResultLines.forEach(line => outputChannel.appendLine(line));
-				}
+			// The output of the run is written as it arrives, so a long run
+			// shows its progress.
+			tp.stdout.on('data', chunk => {
+				const parsed = parser.write(chunk.toString());
+				parsed.output.forEach(line => outputChannel.appendLine(line));
+				parsed.buildOutput.forEach(line => outputChannel.appendLine(expandFilePathInOutput(line, testconfig.dir)));
 			});
 
-			// go test emits build errors on stderr, which contain paths relative to the cwd
+			// go test emits anything that is not part of the event stream on
+			// stderr, which contains paths relative to the cwd.
 			errBuf.onLine(line => outputChannel.appendLine(expandFilePathInOutput(line, testconfig.dir)));
 			errBuf.onDone(last => last && outputChannel.appendLine(expandFilePathInOutput(last, testconfig.dir)));
 
-			tp.stdout.on('data', chunk => outBuf.append(chunk.toString()));
 			tp.stderr.on('data', chunk => errBuf.append(chunk.toString()));
 
-
-
 			tp.on('close', (code, signal) => {
-				outBuf.done();
+				const parsed = parser.end();
+				parsed.output.forEach(line => outputChannel.appendLine(line));
+				parsed.buildOutput.forEach(line => outputChannel.appendLine(expandFilePathInOutput(line, testconfig.dir)));
+
 				errBuf.done();
 
 				if (code) {
@@ -196,9 +185,11 @@ export function runGoTest(testconfig: TestConfig): Promise<RawTestResult> {
 					runningTestProcesses.splice(index, 1);
 				}
 
-
-
-				resolve(new RawTestResult(code === 0, testResultLines, failedTests));
+				const results = parser.results;
+				// The build error comes before everything else the run
+				// produced, so it leads the output.
+				const output = results.buildOutput.concat(results.output);
+				resolve(new RawTestResult(code === 0, output, results.failedTests.slice()));
 			});
 
 			runningTestProcesses.push(tp);
@@ -211,17 +202,22 @@ export function runGoTest(testconfig: TestConfig): Promise<RawTestResult> {
 	});
 }
 
-function expandFilePathInOutput(output: string, cwd: string): string {
-	let lines = output.split('\n');
-	for (let i = 0; i < lines.length; i++) {
-		// The path group is matched non-greedily and cannot contain whitespace,
-		// so a line holding two paths cannot bind the wrong one.
-		let matches = lines[i].match(/^\s*(\S+\.go):(\d+):/);
-		if (matches && matches[1] && !path.isAbsolute(matches[1])) {
-			lines[i] = lines[i].replace(matches[1], path.join(cwd, matches[1]));
-		}
+/**
+ * Makes the path of a Go file in a line of output absolute.
+ *
+ * The tool prints the path of a file relative to the directory it ran in.
+ *
+ * @param line the line of output.
+ * @param cwd the directory the tool ran in.
+ */
+function expandFilePathInOutput(line: string, cwd: string): string {
+	// The path group is matched non-greedily and cannot contain whitespace,
+	// so a line holding two paths cannot bind the wrong one.
+	const matches = line.match(/^\s*(\S+\.go):(\d+):/);
+	if (matches && matches[1] && !path.isAbsolute(matches[1])) {
+		return line.replace(matches[1], path.join(cwd, matches[1]));
 	}
-	return lines.join('\n');
+	return line;
 }
 
 /**

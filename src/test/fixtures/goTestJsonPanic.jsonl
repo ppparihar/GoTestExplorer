@@ -1,0 +1,44 @@
+{"Time":"2026-10-22T12:44:11.04861+05:30","Action":"start","Package":"probe"}
+{"Time":"2026-10-22T12:44:11.520705+05:30","Action":"run","Package":"probe","Test":"TestAlpha"}
+{"Time":"2026-10-22T12:44:11.520755+05:30","Action":"output","Package":"probe","Test":"TestAlpha","Output":"=== RUN   TestAlpha\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520787+05:30","Action":"run","Package":"probe","Test":"TestAlpha/sub1"}
+{"Time":"2026-10-22T12:44:11.520791+05:30","Action":"output","Package":"probe","Test":"TestAlpha/sub1","Output":"=== RUN   TestAlpha/sub1\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520799+05:30","Action":"output","Package":"probe","Test":"TestAlpha/sub1","Output":"    a_test.go:7: boom\n","OutputType":"error"}
+{"Time":"2026-10-22T12:44:11.520807+05:30","Action":"output","Package":"probe","Test":"TestAlpha/sub1","Output":"--- FAIL: TestAlpha/sub1 (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520811+05:30","Action":"fail","Package":"probe","Test":"TestAlpha/sub1","Elapsed":0}
+{"Time":"2026-10-22T12:44:11.520818+05:30","Action":"output","Package":"probe","Test":"TestAlpha","Output":"--- FAIL: TestAlpha (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520829+05:30","Action":"fail","Package":"probe","Test":"TestAlpha","Elapsed":0}
+{"Time":"2026-10-22T12:44:11.520833+05:30","Action":"run","Package":"probe","Test":"TestBeta"}
+{"Time":"2026-10-22T12:44:11.520836+05:30","Action":"output","Package":"probe","Test":"TestBeta","Output":"=== RUN   TestBeta\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520839+05:30","Action":"output","Package":"probe","Test":"TestBeta","Output":"    a_test.go:12: nope\n"}
+{"Time":"2026-10-22T12:44:11.520842+05:30","Action":"output","Package":"probe","Test":"TestBeta","Output":"--- SKIP: TestBeta (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520846+05:30","Action":"skip","Package":"probe","Test":"TestBeta","Elapsed":0}
+{"Time":"2026-10-22T12:44:11.520849+05:30","Action":"run","Package":"probe","Test":"TestGamma"}
+{"Time":"2026-10-22T12:44:11.520852+05:30","Action":"output","Package":"probe","Test":"TestGamma","Output":"=== RUN   TestGamma\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520855+05:30","Action":"run","Package":"probe","Test":"TestGamma/ok"}
+{"Time":"2026-10-22T12:44:11.520858+05:30","Action":"output","Package":"probe","Test":"TestGamma/ok","Output":"=== RUN   TestGamma/ok\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520861+05:30","Action":"output","Package":"probe","Test":"TestGamma/ok","Output":"--- PASS: TestGamma/ok (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520864+05:30","Action":"pass","Package":"probe","Test":"TestGamma/ok","Elapsed":0}
+{"Time":"2026-10-22T12:44:11.520874+05:30","Action":"output","Package":"probe","Test":"TestGamma","Output":"--- PASS: TestGamma (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520877+05:30","Action":"pass","Package":"probe","Test":"TestGamma","Elapsed":0}
+{"Time":"2026-10-22T12:44:11.52088+05:30","Action":"run","Package":"probe","Test":"TestPanic"}
+{"Time":"2026-10-22T12:44:11.520887+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"=== RUN   TestPanic\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.520891+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"--- FAIL: TestPanic (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.523349+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"panic: kaboom [recovered, repanicked]\n"}
+{"Time":"2026-10-22T12:44:11.523376+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"\n"}
+{"Time":"2026-10-22T12:44:11.52339+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"goroutine 39 [running]:\n"}
+{"Time":"2026-10-22T12:44:11.523396+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"testing.tRunner.func1.2({0x102a97918, 0x102a6c3f0})\n"}
+{"Time":"2026-10-22T12:44:11.523403+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"\t/opt/homebrew/Cellar/go/1.27.1/libexec/src/testing/testing.go:2123 +0x1a0\n"}
+{"Time":"2026-10-22T12:44:11.52345+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"testing.tRunner.func1()\n"}
+{"Time":"2026-10-22T12:44:11.523455+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"\t/opt/homebrew/Cellar/go/1.27.1/libexec/src/testing/testing.go:2126 +0x2c8\n"}
+{"Time":"2026-10-22T12:44:11.523459+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"panic({0x102a97918?, 0x102a6c3f0?})\n"}
+{"Time":"2026-10-22T12:44:11.523462+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"\t/opt/homebrew/Cellar/go/1.27.1/libexec/src/runtime/panic.go:859 +0x120\n"}
+{"Time":"2026-10-22T12:44:11.523466+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"probe.TestPanic(0x4112baad6d88?)\n"}
+{"Time":"2026-10-22T12:44:11.523471+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"\t/tmp/jsonfix/d_test.go:6 +0x2c\n"}
+{"Time":"2026-10-22T12:44:11.523474+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"testing.tRunner(0x4112baad6d88, 0x102ab7440)\n"}
+{"Time":"2026-10-22T12:44:11.523477+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"\t/opt/homebrew/Cellar/go/1.27.1/libexec/src/testing/testing.go:2193 +0xc4\n"}
+{"Time":"2026-10-22T12:44:11.523487+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"created by testing.(*T).Run in goroutine 1\n"}
+{"Time":"2026-10-22T12:44:11.523491+05:30","Action":"output","Package":"probe","Test":"TestPanic","Output":"\t/opt/homebrew/Cellar/go/1.27.1/libexec/src/testing/testing.go:2258 +0x3b8\n"}
+{"Time":"2026-10-22T12:44:11.523812+05:30","Action":"fail","Package":"probe","Test":"TestPanic","Elapsed":0}
+{"Time":"2026-10-22T12:44:11.523827+05:30","Action":"output","Package":"probe","Output":"FAIL\tprobe\t0.475s\n","OutputType":"frame"}
+{"Time":"2026-10-22T12:44:11.523836+05:30","Action":"fail","Package":"probe","Elapsed":0.475}

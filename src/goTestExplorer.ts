@@ -10,6 +10,7 @@ import { TestDiscovery } from './testDiscovery';
 import { Config } from './config';
 import { TestQueue } from './runner/testQueue';
 import { scanGoSource } from './discovery/goScanner';
+import { hasFailed } from './exec/goTestJsonParser';
 
 export class GoTestExplorer {
 
@@ -91,7 +92,9 @@ export class GoTestExplorer {
         let isTestSuitePassed = true;
         testConfig.functions.forEach(t => {
             let isTestPassed = true;
-            if (result.isPassed === false && (!result.failedTests || result.failedTests.length === 0 || result.failedTests.indexOf(t) !== -1)) {
+            // A test fails when it or one of its subtests failed, so a
+            // failure in `TestAlpha/sub` marks `TestAlpha` as failed.
+            if (result.isPassed === false && (!result.failedTests || result.failedTests.length === 0 || hasFailed(result.failedTests, t))) {
                 isTestPassed = false;
                 isTestSuitePassed = false;
             }

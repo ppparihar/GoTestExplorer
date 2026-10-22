@@ -124,10 +124,10 @@ Each phase is independently shippable and independently verifiable.
 
 | Phase | Status | Evidence |
 |---|---|---|
-| Phase 0 — Baseline and test harness | Done | `npm test` runs 134 assertions across 10 files; `npm run bench` writes `bench/results/baseline.json` |
+| Phase 0 — Baseline and test harness | Done | `npm test` runs 167 assertions across 12 files; `npm run bench` writes `bench/results/baseline.json` |
 | Phase 1 — Correctness fixes | Done | C1–C12 applied; each fix has a regression test in `src/test/` |
 | Phase 2 — Discovery performance | Done | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0; a refresh over a warm cache costs 3.6 ms and a saved file reaches the tree without a manual refresh |
-| Phase 3 — Execution performance | Not started | — |
+| Phase 3 — Execution performance | In progress | 3a and 3b done: the run is parsed from the `go test -json` event stream, and the `-run` anchoring is proven against the real toolchain |
 | Phase 4 — Toolchain and delivery | Partially done | TypeScript 5, `@types/vscode` 1.85, Vitest, `tsx` landed as Phase 0 prerequisites; the rest of Phase 4 is still open |
 | Phase 5 — Native Testing API | Not started | Deferred |
 | Phase 6 — Feature parity | Not started | Deferred |
@@ -290,15 +290,32 @@ The watcher applies the same scope rules as the walk: a file outside the directo
 
 **Effort:** ~4 days.
 
+**Phase 3 deviations.** `go test -json` implies verbose test-binary output, so
+the output channel now carries the whole run (`=== RUN`, `--- PASS`, and the
+rest) instead of only the failing tests. The result keeps the whole output too,
+so "show test output" shows the run rather than a fragment of it. The toolchain
+reports a failure for the parent of a failed subtest itself, so the descendant
+rule is a backstop rather than the main path; it is implemented and tested
+anyway, so the guarantee does not depend on the toolchain. A subtest that calls
+`os.Exit(1)` produces no per-test event at all, only a package-level failure —
+the extension then reports every requested test as failed, which is the safe
+answer.
+
 ---
 
 ### Phase 3 — Execution performance and correctness
 
-**3a. `go test -json` result parsing** — new `src/exec/goTestJsonParser.ts`
+**3a. `go test -json` result parsing** — new `src/exec/goTestJsonParser.ts` — **Done**
 
 Replace the `--- FAIL:` regex (`src/lib/testUtil.ts:173-183`) with a streaming JSON-event parser. Handle: `run`/`pass`/`fail`/`skip`/`output`/`build-fail`/`panic`. A test fails if it or any descendant (`Test/sub`) fails.
 
-**3b. `-run` anchoring (carried from C1) is now provable** via a unit test over the emitted JSON.
+**Done.** `src/exec/goTestJsonParser.ts` reads the stream as it arrives: `write(chunk)` returns the output and the build output it saw, `end()` closes the stream and returns the results (the tests, the failed tests, the output, the build output). The `--- FAIL:` regex and the output buffer it fed are gone. The events handled are `run`, `pass`, `fail`, `skip`, `output`, `build-output`, `build-fail` and `start`; there is no `panic` action — a panic arrives as a `fail` with the panic text as output. The build error arrives on stdout *inside* the JSON stream, so it is separated from the output of the tests and leads the result, and a build failure produces no per-test events, which leaves the failed-test list empty and marks every requested test as failed. The descendant rule is `hasFailed(failedTests, name)`: a test failed when it failed, or when any failed test is named `name/...`.
+
+The fixtures in `src/test/fixtures/` are the captured output of the real toolchain (Go 1.27.1), not hand-written JSON.
+
+**3b. `-run` anchoring (carried from C1) is now provable** via a unit test over the emitted JSON — **Done**
+
+`src/test/runGoTest.test.ts` runs the real toolchain against a fixture module: with `TestPassing`, `TestPassingExtra` and `TestOther` in one file, a run of `TestPassing` and `TestOther` must not run `TestPassingExtra`. The test reads the emitted JSON and asserts the names that ran. Reverting the regex to the ungrouped alternation `^TestPassing|TestOther$` — which parses as `(^TestPassing)|(TestOther$)` — makes the test fail, so the anchoring is proven rather than asserted.
 
 **3c. Batched tree refresh** — `src/goTestProvider.ts:64-71`
 
@@ -321,10 +338,10 @@ Where the selection spans multiple packages, run one `go test ./...` (or one `go
 Add `contributes.configuration` for: `maxParallelTests`, `skipFolders`, `goPath`/`goBinary`, `testFlags`, `buildTags`, `timeout`, `envFile`, `env`, `runInTerminal`. Read `go.*` settings from the Go extension as a **fallback**, with the extension's own settings taking precedence, and validate that `go.testTimeout` is present (C4).
 
 **Exit criteria:**
-- A subtest failure marks its parent test failed.
-- "Run All" across 10 packages spawns **1** `go test` process.
-- A test run can be cancelled from the UI.
-- The tree re-renders once per package, not once per test.
+- A subtest failure marks its parent test failed. **Met** — the failed test is `TestAlpha/sub` and `TestAlpha` is reported as failed; `src/test/goTestExplorer.test.ts` covers it.
+- "Run All" across 10 packages spawns **1** `go test` process. **Open** — 3e.
+- A test run can be cancelled from the UI. **Open** — 3d.
+- The tree re-renders once per package, not once per test. **Open** — 3c.
 
 **Effort:** ~4 days.
 

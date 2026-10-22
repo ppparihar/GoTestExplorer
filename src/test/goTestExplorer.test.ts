@@ -103,6 +103,30 @@ describe('GoTestExplorer', () => {
 		expect(alpha.isPassed).toBe(false);
 		expect(alpha.output.join('\n')).toContain('boom');
 	});
+
+	it('marks a test as failed when one of its subtests failed', async () => {
+		// The tool reports the subtest that failed. The test that holds it
+		// failed too, so it must not be reported as passed.
+		runGoTest.mockResolvedValue(new RawTestResult(false, ['--- FAIL: TestAlpha/sub'], ['TestAlpha/sub']));
+		const node = new TestNode('TestAlpha', fileUri);
+		await explorer.onRunSingleTest(node);
+
+		await waitFor(() => results.length > 0);
+
+		const alpha = results.find(r => r.testName === 'TestAlpha');
+		expect(alpha.isPassed).toBe(false);
+	});
+
+	it('does not mark a test as failed when a different test failed', async () => {
+		runGoTest.mockResolvedValue(new RawTestResult(false, ['--- FAIL: TestOther'], ['TestOther']));
+		const node = new TestNode('TestAlpha', fileUri);
+		await explorer.onRunSingleTest(node);
+
+		await waitFor(() => results.length > 0);
+
+		const alpha = results.find(r => r.testName === 'TestAlpha');
+		expect(alpha.isPassed).toBe(true);
+	});
 });
 
 describe('GoTestExplorer go-to-location', () => {

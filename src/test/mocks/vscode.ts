@@ -175,11 +175,11 @@ export interface WorkspaceFolder {
  */
 export class WorkspaceConfiguration {
 	private readonly values: Record<string, unknown>;
-	private readonly inspectFn?: (key: string) => unknown;
+	private readonly inspectFn?: (key: string) => Record<string, unknown>;
 
 	constructor(
 		values: Record<string, unknown>,
-		inspectFn?: (key: string) => unknown) {
+		inspectFn?: (key: string) => Record<string, unknown>) {
 		this.values = values;
 		this.inspectFn = inspectFn;
 
@@ -199,6 +199,8 @@ export class WorkspaceConfiguration {
 		});
 	}
 
+	get<T>(key: string): T | undefined;
+	get<T>(key: string, defaultValue: T): T;
 	get<T>(key: string, defaultValue?: T): T | undefined {
 		const value = this.values[key];
 		return (value === undefined ? defaultValue : value) as T | undefined;
@@ -208,8 +210,36 @@ export class WorkspaceConfiguration {
 		return this.values[key] !== undefined;
 	}
 
-	inspect(key: string): { workspaceFolderValue?: unknown; workspaceValue?: unknown; globalValue?: unknown } {
-		return this.inspectFn ? this.inspectFn(key) : {};
+	update(key: string, value: unknown): Promise<void> {
+		this.values[key] = value;
+		return Promise.resolve();
+	}
+
+	inspect<T>(key: string): {
+		key: string;
+		defaultValue?: T;
+		globalValue?: T;
+		workspaceValue?: T;
+		workspaceFolderValue?: T;
+		defaultLanguageValue?: T;
+		globalLanguageValue?: T;
+		workspaceLanguageValue?: T;
+		workspaceFolderLanguageValue?: T;
+		languageIds?: string[];
+	} {
+		const inspected = this.inspectFn ? this.inspectFn(key) : {};
+		return { key, ...inspected } as unknown as {
+			key: string;
+			defaultValue?: T;
+			globalValue?: T;
+			workspaceValue?: T;
+			workspaceFolderValue?: T;
+			defaultLanguageValue?: T;
+			globalLanguageValue?: T;
+			workspaceLanguageValue?: T;
+			workspaceFolderLanguageValue?: T;
+			languageIds?: string[];
+		};
 	}
 
 	[key: string]: unknown;
@@ -256,7 +286,11 @@ export const __state = {
 	/**
 	 * The file watchers the code under test has created.
 	 */
-	fileWatchers: [] as MockFileSystemWatcher[]
+	fileWatchers: [] as MockFileSystemWatcher[],
+	/**
+	 * The output channels the code under test has created.
+	 */
+	outputChannels: [] as { name: string; lines: string[]; }[]
 };
 
 /**
@@ -398,8 +432,9 @@ export const window = {
 		__state.messages.error.push(message);
 		return Promise.resolve(undefined);
 	},
-	createOutputChannel(_name: string) {
+	createOutputChannel(name: string) {
 		const lines: string[] = [];
+		__state.outputChannels.push({ name, lines });
 		return {
 			appendLine(line: string): void { lines.push(line); },
 			append(text: string): void { lines.push(text); },
