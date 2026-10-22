@@ -1,16 +1,5 @@
 # Change Log
 
-## Unreleased
-
-### Added
-- **Choose what is loaded.** For a large workspace, three settings decide which paths are loaded into the tree. The tree follows them as soon as they change. (#6)
-  - `goTestExplorer.includePaths`: the folders to load tests from, relative to the workspace folder (or absolute), for example `["api", "worker"]`. A listed folder that does not exist is reported. Empty, the default, loads the whole workspace folder, or its `src` folder when it has one.
-  - `goTestExplorer.excludePaths`: glob patterns of the files and folders that are not loaded, for example `**/generated` or `third_party/**`. A folder that matches is not entered.
-  - `goTestExplorer.useFilesExclude` (on by default): the `files.exclude` setting of the workspace also leaves paths out of the tree.
-- The module cache of a GOPATH that lives inside the project (the `name@v1.2.3` folders) is no longer walked, so the tests of every downloaded module do not fill the tree. (#6)
-- **Build tags.** The command "Set Build Tags..." in the menu of the test view (the three dots) asks for the tags that `go test` runs with (`-tags`), for example `functional,integration`, and keeps them in the settings of the workspace, as `goTestExplorer.buildTags`. The view shows the tags that are set. (#30)
-- A test file that a build tag leaves out, such as one that starts with `//go:build functional` when that tag is not set, is shown as "needs build tags", with the constraint in its tooltip. It has no run button and no tests listed, and "Run All" does not run it, so its tests no longer show as passed without having run. Setting the tag brings the file back. Constraints in the older `// +build` form and in the name of a file (`_linux_test.go`) are read too. A constraint that depends on how the tool is run (`cgo`, `race`) is not decided, so its file is kept.
-
 ## V0.3.0
 
 ### Added
@@ -24,6 +13,13 @@
   - The status bar shows the figure too. Click it for the covered files, the least covered first, and pick one to open it.
   - Running one test file or one test only adds to the coverage of the file it tests and never takes coverage back. "Run All" starts the coverage again, and saving a file forgets its coverage, because the marks would no longer be where the code is.
 - The setting `goTestExplorer.showFilesWithoutTests` lists the test files that have no `Test` function. They are left out by default.
+- **Choose what is loaded.** For a large workspace, three settings decide which paths are loaded into the tree. The tree follows them as soon as they change. (#6)
+  - `goTestExplorer.includePaths`: the folders to load tests from, relative to the workspace folder (or absolute), for example `["api", "worker"]`. A listed folder that does not exist is reported. Empty, the default, loads the whole workspace folder, or its `src` folder when it has one.
+  - `goTestExplorer.excludePaths`: glob patterns of the files and folders that are not loaded, for example `**/generated` or `third_party/**`. A folder that matches is not entered.
+  - `goTestExplorer.useFilesExclude` (on by default): the `files.exclude` setting of the workspace also leaves paths out of the tree.
+- The module cache of a GOPATH that lives inside the project (the `name@v1.2.3` folders) is no longer walked, so the tests of every downloaded module do not fill the tree. (#6)
+- **Build tags.** The command "Set Build Tags..." in the menu of the test view (the three dots) asks for the tags that `go test` runs with (`-tags`), for example `functional,integration`, and keeps them in the settings of the workspace, as `goTestExplorer.buildTags`. The view shows the tags that are set. (#30)
+- A test file that a build tag leaves out, such as one that starts with `//go:build functional` when that tag is not set, is shown as "needs build tags", with the constraint in its tooltip. It has no run button and no tests listed, and "Run All" does not run it, so its tests no longer show as passed without having run. Setting the tag brings the file back. Constraints in the older `// +build` form and in the name of a file (`_linux_test.go`) are read too. A constraint that depends on how the tool is run (`cgo`, `race`) is not decided, so its file is kept.
 
 ### Fixed
 - A test file that has no `Test` function, such as a file of helpers that another test runs with `t.Run`, no longer looks like a test. Clicking it used to fail with "Could not find test (no symbols matching)", and its run button ran nothing and could report a pass. Such files are now left out of the tree, or shown as files marked "no tests", without a run button, when `goTestExplorer.showFilesWithoutTests` is on.
