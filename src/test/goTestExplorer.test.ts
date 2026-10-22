@@ -330,6 +330,104 @@ describe('GoTestExplorer runs a whole module', () => {
     expect(config.packages.map((p: { path: string }) => p.path)).toEqual(['pkg/a', 'pkg/b']);
   });
 
+  it('runs only the tests that match the filter when Run All is used', async () => {
+    const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha', 'TestBeta']);
+    const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestGamma']);
+    explorer.commands.sendDiscoveredTests([a, b]);
+    explorer.goTestProvider.filter = 'beta';
+
+    await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+    await waitFor(() => runGoTest.mock.calls.length > 0);
+
+    expect(runGoTest.mock.calls.length).toBe(1);
+    expect(runGoTest.mock.calls[0][0].functions).toEqual(['TestBeta']);
+  });
+
+  it('runs only the failed tests when filtered by status', async () => {
+    const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha', 'TestBeta']);
+    explorer.commands.sendDiscoveredTests([a]);
+    explorer.commands.sendTestResult(new TestResult(a.uri, 'TestAlpha', true, []));
+    explorer.commands.sendTestResult(new TestResult(a.uri, 'TestBeta', false, []));
+
+    await vscode.commands.executeCommand('goTestExplorer.filterTests');
+    const box = __state.quickPicks[__state.quickPicks.length - 1];
+    box.tick('failed');
+    box.accept();
+    expect(explorer.goTestProvider.statuses.has('failed')).toBe(true);
+
+    await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+    await waitFor(() => runGoTest.mock.calls.length > 0);
+    expect(runGoTest.mock.calls[0][0].functions).toEqual(['TestBeta']);
+
+    await vscode.commands.executeCommand('goTestExplorer.clearFilter');
+    expect(explorer.goTestProvider.isFiltered).toBe(false);
+  });
+
+  it('expands every file that is shown', async () => {
+    const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+    const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestBeta']);
+    explorer.commands.sendDiscoveredTests([a, b]);
+    explorer.goTestProvider.filter = 'beta';
+
+    await vscode.commands.executeCommand('goTestExplorer.expandAll');
+
+    expect(__state.revealed.map((r) => r.node)).toEqual([b]);
+    expect(__state.revealed[0].options).toMatchObject({ expand: true });
+  });
+
+  it('collapses every file with the command of the view, and shows the other button', async () => {
+    const contexts: unknown[][] = [];
+    const collapsed: string[] = [];
+    __state.registeredCommands.set('setContext', (...args) => contexts.push(args));
+    __state.registeredCommands.set('workbench.actions.treeView.goTestExplorer.collapseAll', () =>
+      collapsed.push('collapseAll'),
+    );
+
+    await vscode.commands.executeCommand('goTestExplorer.collapseAll');
+    expect(collapsed).toEqual(['collapseAll']);
+    expect(contexts.pop()).toEqual(['goTestExplorer.allExpanded', false]);
+
+    await vscode.commands.executeCommand('goTestExplorer.expandAll');
+    expect(contexts.pop()).toEqual(['goTestExplorer.allExpanded', true]);
+  });
+
+  describe('the filter box', () => {
+    const openBox = async () => {
+      await vscode.commands.executeCommand('goTestExplorer.filterTests');
+      return __state.quickPicks[__state.quickPicks.length - 1];
+    };
+
+    it('narrows the tree while the text is typed, and keeps it on Enter', async () => {
+      const box = await openBox();
+      box.type('be');
+      expect(explorer.goTestProvider.filter).toBe('be');
+      box.type('beta');
+      expect(explorer.goTestProvider.filter).toBe('beta');
+      box.accept();
+      expect(explorer.goTestProvider.filter).toBe('beta');
+    });
+
+    it('puts back the previous filter on Escape', async () => {
+      explorer.goTestProvider.filter = 'alpha';
+      explorer.goTestProvider.statuses = ['passed'];
+      const box = await openBox();
+      box.type('gamma');
+      box.tick('failed');
+      box.cancel();
+      expect(explorer.goTestProvider.filter).toBe('alpha');
+      expect(Array.from(explorer.goTestProvider.statuses)).toEqual(['passed']);
+    });
+
+    it('applies the text and the statuses together, and shows the statuses whatever is typed', async () => {
+      const box = await openBox();
+      expect(box.items.every((item) => (item as { alwaysShow: boolean }).alwaysShow)).toBe(true);
+      box.type('beta');
+      box.tick('failed', 'notRun');
+      expect(explorer.goTestProvider.filter).toBe('beta');
+      expect(Array.from(explorer.goTestProvider.statuses)).toEqual(['failed', 'notRun']);
+    });
+  });
+
   it('matches a finished test to its own package', async () => {
     const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestSame']);
     const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestSame']);

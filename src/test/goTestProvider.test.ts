@@ -31,6 +31,27 @@ describe('GoTestProvider', () => {
     provider = new GoTestProvider(fakeContext(), commands);
   });
 
+  it('shows only the tests that match the filter', async () => {
+    const other = new TestNode('TestBeta', fileUri);
+    const suite = new TestNode('alpha_test.go', fileUri, [
+      new TestNode('TestAlpha', fileUri),
+      other,
+    ]);
+    commands.sendDiscoveredTests([suite]);
+
+    provider.filter = 'beta';
+
+    const [file] = await provider.getChildren();
+    expect(file).toBe(suite);
+    expect((await provider.getChildren(file)).map((n) => n.name)).toEqual(['TestBeta']);
+
+    provider.filter = 'nothing';
+    expect(await provider.getChildren()).toEqual([]);
+
+    provider.filter = '';
+    expect((await provider.getChildren(suite)).length).toBe(2);
+  });
+
   it('applies a test result to the matching node', () => {
     commands.sendDiscoveredTests([buildSuite()]);
 

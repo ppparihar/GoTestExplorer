@@ -4,6 +4,7 @@ import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { Config } from './config';
+import { isActive, TestFilter, TestStatus, visibleChildren, visibleSuites } from './lib/testFilter';
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<
@@ -15,6 +16,8 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private __discoveredTestsMap: Map<string, TestNode> = new Map();
   private _discoveredTests: TestNode[] = [];
   private _discovering: boolean;
+  private _filter = '';
+  private _statuses: ReadonlySet<TestStatus> = new Set();
   /**
    * The nodes whose result changed since the tree was last redrawn.
    */
@@ -43,6 +46,11 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
   private refresh(testNode?: TestNode): void {
     this._pendingResults.clear();
+    if (this._statuses.size > 0) {
+      // A result can move a test in or out of what is shown, and a file in
+      // or out of the tree, so the whole tree is drawn.
+      testNode = undefined;
+    }
     if (!testNode) {
       // The whole tree is drawn, so there is nothing left to draw later.
       this.cancelPendingOutcomes();
@@ -111,13 +119,68 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
   getChildren(testNode?: TestNode): Thenable<TestNode[]> {
     if (testNode) {
-      return Promise.resolve(testNode.children);
+      return Promise.resolve(this.visibleChildrenOf(testNode));
     }
     if (this._discovering) {
       return Promise.resolve([new TestNode('Loading...', null)]);
     }
-    return Promise.resolve(this._discoveredTests);
+    return Promise.resolve(this.visibleTests);
   }
+
+  /**
+   * The search text the tree is narrowed to. Empty means every test is shown.
+   */
+  get filter(): string {
+    return this._filter;
+  }
+  set filter(text: string) {
+    this._filter = text.trim();
+    this.refresh();
+  }
+
+  /**
+   * The statuses the tree is narrowed to. Empty means any status.
+   */
+  get statuses(): ReadonlySet<TestStatus> {
+    return this._statuses;
+  }
+  set statuses(statuses: Iterable<TestStatus>) {
+    this._statuses = new Set(statuses);
+    this.refresh();
+  }
+
+  /**
+   * Whether the tree is narrowed to something.
+   */
+  get isFiltered(): boolean {
+    return isActive(this.currentFilter);
+  }
+
+  private get currentFilter(): TestFilter {
+    return { text: this._filter, statuses: this._statuses };
+  }
+
+  /**
+   * The files that are shown.
+   */
+  get visibleTests(): TestNode[] {
+    return visibleSuites(this._discoveredTests, this.currentFilter);
+  }
+
+  /**
+   * The tests of a file that are shown.
+   */
+  visibleChildrenOf(suite: TestNode): TestNode[] {
+    return this.isFiltered ? visibleChildren(suite, this.currentFilter) : suite.children;
+  }
+
+  /**
+   * The file a test belongs to. A file has no parent. Needed to reveal a node.
+   */
+  getParent(testNode: TestNode): TestNode | undefined {
+    return this._discoveredTests.find((suite) => suite.children.includes(testNode));
+  }
+
   get discoveredTests(): TestNode[] {
     return this._discoveredTests;
   }

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { TestResult } from './testResult';
 import { Icons } from './icons';
+import { TestStatus } from './lib/testFilter';
 export class TestNode {
   private _testResult: TestResult;
   private _isLoading: boolean = false;
@@ -32,6 +33,12 @@ export class TestNode {
           : this.testResult.isPassed
             ? Icons.testPassed
             : Icons.testFailed;
+  }
+  /**
+   * Whether the test passed, failed, or has not run yet.
+   */
+  get status(): TestStatus {
+    return !this.testResult ? 'notRun' : this.testResult.isPassed ? 'passed' : 'failed';
   }
   get children(): TestNode[] {
     return this._children ? this._children : [];

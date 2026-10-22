@@ -3,6 +3,7 @@ import * as path from 'path';
 import { GoTestProvider } from './goTestProvider';
 import { runGoTest, TestConfig, TestPackage, cancelRunningTests } from './lib/testUtil';
 import { TestNode } from './testNode';
+import { TestStatus } from './lib/testFilter';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { RawTestResult } from './rawTestResult';
@@ -33,8 +34,15 @@ interface ModuleGroup {
   suites: TestNode[];
 }
 
+const STATUS_LABELS: Record<TestStatus, string> = {
+  failed: 'failed',
+  passed: 'passed',
+  notRun: 'not run',
+};
+
 export class GoTestExplorer {
   goTestProvider: GoTestProvider;
+  private readonly treeView: vscode.TreeView<TestNode>;
 
   readonly commands: Commands;
   private readonly testQueue: TestQueue;
@@ -61,7 +69,10 @@ export class GoTestExplorer {
       (testConfig, result) => this.onRunCompleted(testConfig, result),
       (testConfig, error) => this.onRunFailed(testConfig, error),
     );
-    vscode.window.registerTreeDataProvider('goTestExplorer', this.goTestProvider);
+    this.treeView = vscode.window.createTreeView('goTestExplorer', {
+      treeDataProvider: this.goTestProvider,
+    });
+    context.subscriptions.push(this.treeView);
 
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.runTest', this.onRunSingleTest.bind(this)),
@@ -72,6 +83,22 @@ export class GoTestExplorer {
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.refreshTestExplorer', () => {
         testDiscoverer.discoverAllTests();
+      }),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.expandAll', this.onExpandAll.bind(this)),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.collapseAll', this.onCollapseAll.bind(this)),
+    );
+    this.showExpanded(true);
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.filterTests', this.onFilterTests.bind(this)),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.clearFilter', () => {
+        this.goTestProvider.statuses = [];
+        this.setFilter('');
       }),
     );
     const cancelTestRun = () => {
@@ -107,19 +134,124 @@ export class GoTestExplorer {
     );
     testDiscoverer.discoverAllTests();
   }
+  /**
+   * Expands every file that is shown.
+   *
+   * The view has one button for expanding and collapsing: this is the one it
+   * shows while the files are collapsed.
+   */
+  private async onExpandAll() {
+    this.showExpanded(true);
+    for (const suite of this.goTestProvider.visibleTests.filter((s) => s.isTestSuite)) {
+      await this.treeView.reveal(suite, { expand: true, select: false, focus: false });
+    }
+  }
+
+  /**
+   * Collapses every file, with the command the view itself has for it.
+   */
+  private async onCollapseAll() {
+    this.showExpanded(false);
+    await vscode.commands.executeCommand('workbench.actions.treeView.goTestExplorer.collapseAll');
+  }
+
+  /**
+   * Tells the title of the view which of the two buttons to show.
+   */
+  private showExpanded(expanded: boolean) {
+    vscode.commands.executeCommand('setContext', 'goTestExplorer.allExpanded', expanded);
+  }
+
+  /**
+   * One box for the whole filter: the text is typed in it, and the statuses
+   * are ticked in its list.
+   *
+   * The tree follows the box as it changes. Enter keeps the filter, and
+   * Escape puts back the one that was on before.
+   */
+  private onFilterTests() {
+    const provider = this.goTestProvider;
+    const previousText = provider.filter;
+    const previousStatuses = Array.from(provider.statuses);
+
+    const choices: Array<vscode.QuickPickItem & { status: TestStatus }> = [
+      { label: '$(error) Failed', status: 'failed' },
+      { label: '$(pass) Passed', status: 'passed' },
+      { label: '$(circle-outline) Not run', status: 'notRun' },
+    ];
+    // The statuses stay in the list whatever is typed: the built-in matching
+    // of the box would otherwise hide them.
+    choices.forEach((choice) => (choice.alwaysShow = true));
+
+    const box = vscode.window.createQuickPick<(typeof choices)[number]>();
+    let accepted = false;
+    box.title = 'Filter tests';
+    box.placeholder = 'Type words of a test or file name, and tick the statuses to show';
+    box.canSelectMany = true;
+    box.items = choices;
+    box.selectedItems = choices.filter((choice) => provider.statuses.has(choice.status));
+    box.value = previousText;
+    box.onDidChangeValue((text) => this.setFilter(text));
+    box.onDidChangeSelection((picked) => {
+      provider.statuses = picked.map((choice) => choice.status);
+      this.showFilter();
+    });
+    box.onDidAccept(() => {
+      accepted = true;
+      box.hide();
+    });
+    box.onDidHide(() => {
+      if (!accepted) {
+        provider.statuses = previousStatuses;
+        this.setFilter(previousText);
+      }
+      box.dispose();
+    });
+    box.show();
+  }
+
+  private setFilter(text: string) {
+    this.goTestProvider.filter = text;
+    this.showFilter();
+  }
+
+  /**
+   * Tells the view, and the buttons of its title, what the tree is narrowed to.
+   */
+  private showFilter() {
+    const provider = this.goTestProvider;
+    const parts: string[] = [];
+    if (provider.filter) {
+      parts.push(`"${provider.filter}"`);
+    }
+    if (provider.statuses.size > 0) {
+      parts.push(Array.from(provider.statuses, (status) => STATUS_LABELS[status]).join(' or '));
+    }
+    this.treeView.message = provider.isFiltered
+      ? `Filter: ${parts.join(', ')}. Run All runs only the matching tests.`
+      : undefined;
+    vscode.commands.executeCommand(
+      'setContext',
+      'goTestExplorer.filterActive',
+      provider.isFiltered,
+    );
+  }
+
   async onRunSingleTest(testNode: TestNode) {
     this.commands.sendTestRunStarted([testNode]);
     const testConfig = this.buildTestConfig(testNode);
     this.enqueueTest(testConfig);
   }
   private runTestSuite(testNode: TestNode) {
-    if (testNode.children.length === 0) {
+    // A filter narrows the suite to the tests that are shown.
+    const children = this.goTestProvider.visibleChildrenOf(testNode);
+    if (children.length === 0) {
       return;
     }
     // Every test of the suite is reported in one event, so the tree is
     // redrawn once for the whole suite.
-    this.commands.sendTestRunStarted([...testNode.children, testNode]);
-    const testConfig = this.buildTestConfig(testNode);
+    this.commands.sendTestRunStarted([...children, testNode]);
+    const testConfig = this.buildTestConfig(testNode, children);
     this.enqueueTest(testConfig);
   }
 
@@ -131,6 +263,14 @@ export class GoTestExplorer {
    * and the tool decides how to spread them over the available cores.
    */
   private onRunAllTests() {
+    if (this.goTestProvider.isFiltered) {
+      // A run of a module has no filter on the names of its tests, so only
+      // the files that are shown are run, each with the tests that are shown.
+      this.goTestProvider.visibleTests
+        .filter((s) => s.isTestSuite)
+        .forEach((suite) => this.runTestSuite(suite));
+      return;
+    }
     const suites = this.goTestProvider.discoveredTests.filter((s) => s.isTestSuite);
     const groups = new Map<string, ModuleGroup>();
     const withoutModule: TestNode[] = [];
@@ -198,8 +338,8 @@ export class GoTestExplorer {
     this.enqueueTest(testConfig);
   }
 
-  private buildTestConfig(testNode: TestNode): TestConfig {
-    let tests = testNode.children.map((node) => node.name);
+  private buildTestConfig(testNode: TestNode, children = testNode.children): TestConfig {
+    let tests = children.map((node) => node.name);
     tests = tests.length > 0 ? tests : [testNode.name];
     const testConfig: TestConfig = {
       dir: path.dirname(testNode.uri.fsPath),

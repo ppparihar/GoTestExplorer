@@ -127,6 +127,26 @@
         "menus": {
             "view/title": [
                 {
+                    "command": "goTestExplorer.collapseAll",
+                    "when": "view == goTestExplorer && goTestExplorer.allExpanded",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "goTestExplorer.expandAll",
+                    "when": "view == goTestExplorer && !goTestExplorer.allExpanded",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "goTestExplorer.filterTests",
+                    "when": "view == goTestExplorer && !goTestExplorer.filterActive",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "goTestExplorer.clearFilter",
+                    "when": "view == goTestExplorer && goTestExplorer.filterActive",
+                    "group": "navigation@3"
+                },
+                {
                     "command": "goTestExplorer.refreshTestExplorer",
                     "when": "view == goTestExplorer",
                     "group": "navigation@1"
@@ -158,6 +178,26 @@
             ]
         },
         "commands": [
+            {
+                "command": "goTestExplorer.collapseAll",
+                "title": "Collapse All",
+                "icon": "$(collapse-all)"
+            },
+            {
+                "command": "goTestExplorer.expandAll",
+                "title": "Expand All",
+                "icon": "$(expand-all)"
+            },
+            {
+                "command": "goTestExplorer.filterTests",
+                "title": "Filter Tests",
+                "icon": "$(filter)"
+            },
+            {
+                "command": "goTestExplorer.clearFilter",
+                "title": "Clear Filter",
+                "icon": "$(filter-filled)"
+            },
             {
                 "command": "goTestExplorer.cancelTestRun",
                 "title": "Cancel Test Run",

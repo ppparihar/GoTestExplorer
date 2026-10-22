@@ -466,7 +466,64 @@ export class MockTerminal {
   }
 }
 
+/**
+ * A stand-in for the quick pick: a test types into it with `type`, ticks items
+ * with `tick`, and ends it with `accept` or `cancel`.
+ */
+export class MockQuickPick {
+  title = '';
+  placeholder = '';
+  value = '';
+  canSelectMany = false;
+  items: unknown[] = [];
+  selectedItems: unknown[] = [];
+  private readonly selectionListeners: Array<(items: unknown[]) => void> = [];
+  private readonly changeListeners: Array<(text: string) => void> = [];
+  private readonly acceptListeners: Array<() => void> = [];
+  private readonly hideListeners: Array<() => void> = [];
+  onDidChangeValue(listener: (text: string) => void): Disposable {
+    this.changeListeners.push(listener);
+    return new Disposable();
+  }
+  onDidChangeSelection(listener: (items: unknown[]) => void): Disposable {
+    this.selectionListeners.push(listener);
+    return new Disposable();
+  }
+  onDidAccept(listener: () => void): Disposable {
+    this.acceptListeners.push(listener);
+    return new Disposable();
+  }
+  onDidHide(listener: () => void): Disposable {
+    this.hideListeners.push(listener);
+    return new Disposable();
+  }
+  show(): void {}
+  hide(): void {
+    this.hideListeners.forEach((listener) => listener());
+  }
+  dispose(): void {}
+  type(text: string): void {
+    this.value = text;
+    this.changeListeners.forEach((listener) => listener(text));
+  }
+  /** Ticks the items whose `status` is one of the given ones. */
+  tick(...statuses: string[]): void {
+    this.selectedItems = this.items.filter((item) =>
+      statuses.includes((item as { status: string }).status),
+    );
+    this.selectionListeners.forEach((listener) => listener(this.selectedItems));
+  }
+  accept(): void {
+    this.acceptListeners.forEach((listener) => listener());
+  }
+  cancel(): void {
+    this.hide();
+  }
+}
+
 export const __state = {
+  quickPicks: [] as MockQuickPick[],
+  revealed: [] as Array<{ node: unknown; options: unknown }>,
   workspaceFolders: undefined as WorkspaceFolder[] | undefined,
   rootPath: undefined as string | undefined,
   activeTextEditor: undefined as MockTextEditor | undefined,
@@ -570,6 +627,8 @@ export function __reset(): void {
   __state.openedDocuments = [];
   __state.documentTexts.clear();
   __state.fileWatchers = [];
+  __state.quickPicks = [];
+  __state.revealed = [];
   __configCalls.reset();
 }
 
@@ -666,6 +725,27 @@ export const window = {
     const terminal = new MockTerminal(options.name, options.pty);
     __state.terminals.push(terminal);
     return terminal;
+  },
+  createTreeView(
+    _id: string,
+    _options: unknown,
+  ): {
+    message?: string;
+    reveal(node: unknown, options?: unknown): Promise<void>;
+    dispose(): void;
+  } {
+    return {
+      reveal(node: unknown, options?: unknown): Promise<void> {
+        __state.revealed.push({ node, options });
+        return Promise.resolve();
+      },
+      dispose(): void {},
+    };
+  },
+  createQuickPick(): MockQuickPick {
+    const box = new MockQuickPick();
+    __state.quickPicks.push(box);
+    return box;
   },
   registerTreeDataProvider(_id: string, _provider: unknown): Disposable {
     return new Disposable();
