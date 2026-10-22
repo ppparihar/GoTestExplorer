@@ -192,7 +192,9 @@ export class GoTestExplorer {
     } else if (percent === undefined) {
       this.treeView.description = 'Coverage: run tests';
     } else {
-      this.treeView.description = `Coverage ${percent.toFixed(1)}%`;
+      // Only a run of everything gives the figure of the project. Until then
+      // it is the figure of the files that were run, and it says so.
+      this.treeView.description = `Coverage ${percent.toFixed(1)}%${this.coverage.complete ? '' : ' (partial)'}`;
     }
     // The rows of the files show their own coverage, so they are drawn again.
     this.goTestProvider.fileCoverage = (suite) => this.coverageOfTestFile(suite);

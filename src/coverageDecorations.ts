@@ -30,6 +30,7 @@ export class CoverageDecorations implements vscode.Disposable {
   private readonly subscription: vscode.Disposable;
   private readonly saveSubscription: vscode.Disposable;
   private enabled = false;
+  private _complete = false;
   private readonly changed = new vscode.EventEmitter<void>();
   /**
    * What is known about the coverage changed.
@@ -79,6 +80,9 @@ export class CoverageDecorations implements vscode.Disposable {
    * other runs covered.
    */
   update(covered: ReadonlyMap<string, CoverBlock[]>, mode: 'replace' | 'add'): void {
+    if (mode === 'replace') {
+      this._complete = true;
+    }
     covered.forEach((blocks, file) => {
       const known = this.files.get(file);
       this.files.set(file, mode === 'add' && known ? addCoverage(known, blocks) : blocks);
@@ -92,6 +96,7 @@ export class CoverageDecorations implements vscode.Disposable {
    */
   forget(file: string): void {
     if (this.files.delete(file)) {
+      this._complete = false;
       this.render();
     }
   }
@@ -101,7 +106,16 @@ export class CoverageDecorations implements vscode.Disposable {
    */
   clear(): void {
     this.files.clear();
+    this._complete = false;
     this.render();
+  }
+
+  /**
+   * Whether the figure comes from a run of every test, and still holds. Until
+   * then it is the share of the files that were run, not of the project.
+   */
+  get complete(): boolean {
+    return this._complete;
   }
 
   /**
@@ -156,9 +170,9 @@ export class CoverageDecorations implements vscode.Disposable {
     this.statusItem.text =
       percent === undefined
         ? '$(shield) Coverage: run tests to see it'
-        : `$(shield) Coverage ${percent.toFixed(1)}%`;
+        : `$(shield) Coverage ${percent.toFixed(1)}%${this._complete ? '' : ' (partial)'}`;
     this.statusItem.tooltip =
-      'Code coverage of the last test runs. Green lines ran, red lines did not. Click for the files.';
+      'Code coverage of the last test runs. Green lines ran, red lines did not. "Partial" means Run All has not covered every file yet. Click for the files.';
     this.statusItem.show();
   }
 

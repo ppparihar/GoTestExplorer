@@ -432,7 +432,18 @@ describe('GoTestExplorer runs a whole module', () => {
       runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
       await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
       await waitFor(() => completed.length > 0);
-      expect(header().description).toBe('Coverage 50.0%');
+      // One test ran, not every test, so the figure says it is partial.
+      expect(header().description).toBe('Coverage 50.0% (partial)');
+
+      // Run All gives the figure of the project.
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+      await waitFor(() => header().description === 'Coverage 50.0%');
+
+      // A saved file is forgotten, so the figure is partial again.
+      __state.saveListeners.forEach((listener) =>
+        listener({ uri: Uri.file(path.join(moduleDir, 'pkg', 'a', 'a.go')) }),
+      );
+      expect(header().description).toBe('Coverage: run tests');
       // The tests are the only rows of the tree, so the header does not scroll away.
       expect(await explorer.goTestProvider.getChildren()).toEqual([a]);
 
