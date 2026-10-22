@@ -108,10 +108,22 @@ export class Uri {
 	}
 }
 
+/**
+ * The callbacks of the disposables, kept out of the class so that the mock has
+ * the same shape as the real `Disposable`.
+ */
+const disposeCallbacks = new WeakMap<Disposable, () => void>();
+
 export class Disposable {
-	constructor(private readonly callOnDispose: () => void = () => { }) { }
-	dispose(): void {
-		this.callOnDispose();
+	constructor(callback: () => unknown = () => { }) {
+		disposeCallbacks.set(this, () => { callback(); });
+	}
+	dispose(): any {
+		const callback = disposeCallbacks.get(this);
+		disposeCallbacks.set(this, () => { });
+		if (callback) {
+			callback();
+		}
 	}
 	static from(...items: { dispose(): unknown }[]): Disposable {
 		return new Disposable(() => items.forEach(i => i.dispose()));
@@ -257,6 +269,46 @@ export class ConfigurationCallLog {
 }
 
 export const __configCalls = new ConfigurationCallLog();
+
+/**
+ * The shape of a cancellation token.
+ */
+export interface CancellationToken {
+	readonly isCancellationRequested: boolean;
+	readonly onCancellationRequested: (listener: (e: void) => unknown, thisArgs?: unknown, disposables?: Disposable[]) => Disposable;
+}
+
+/**
+ * A stand-in for a cancellation token.
+ */
+export class CancellationTokenSource {
+	private readonly emitter = new EventEmitter<void>();
+	private _cancelled = false;
+
+	readonly token: CancellationToken;
+
+	constructor() {
+		const source = this;
+		this.token = {
+			get isCancellationRequested(): boolean {
+				return source._cancelled;
+			},
+			onCancellationRequested: (listener, thisArgs?, disposables?) => source.emitter.event(listener, thisArgs, disposables)
+		};
+	}
+
+	cancel(): void {
+		if (this._cancelled) {
+			return;
+		}
+		this._cancelled = true;
+		this.emitter.fire();
+	}
+
+	dispose(): void {
+		this.emitter.dispose();
+	}
+}
 
 /**
  * A stand-in for a text editor.

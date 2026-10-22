@@ -49,6 +49,16 @@ export class TestQueue {
 		return this.inFlight;
 	}
 
+	/**
+	 * Drops the invocations that have not started yet.
+	 *
+	 * The invocations that are already running are not stopped here: the
+	 * caller kills them, and each of them reports its own outcome.
+	 */
+	cancel(): void {
+		this.queue.length = 0;
+	}
+
 	private drain(): void {
 		while (this.inFlight < this.maxParallel && this.queue.length > 0) {
 			const config = this.queue.shift();

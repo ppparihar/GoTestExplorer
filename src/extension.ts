@@ -1,7 +1,7 @@
 'use strict';
 import * as vscode from 'vscode';
 import { GoTestExplorer } from './goTestExplorer';
-import { isToolAvailable } from './lib/testUtil';
+import { isToolAvailable, cancelRunningTests } from './lib/testUtil';
 
 
 // this method is called when your extension is activated
@@ -22,4 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 // this method is called when your extension is deactivated
 export function deactivate() {
+    // A test run that is still going is stopped, so it does not outlive the
+    // window that started it.
+    cancelRunningTests();
 }

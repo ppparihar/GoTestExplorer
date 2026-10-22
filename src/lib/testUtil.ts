@@ -16,6 +16,56 @@ const sendSignal = 'SIGKILL';
 const runningTestProcesses: cp.ChildProcess[] = [];
 
 
+/**
+ * Stops every test run that is in flight.
+ *
+ * The whole process tree is killed, not just the `go` process: the tool runs
+ * the test binary as a child, and that binary would keep running — and keep
+ * holding the build cache and the ports it needs — if only its parent were
+ * killed.
+ *
+ * @returns the number of runs that were stopped.
+ */
+export function cancelRunningTests(): number {
+	// The list is copied because a process that is killed is removed from it.
+	const processes = runningTestProcesses.slice();
+	processes.forEach(child => killProcessTree(child));
+	return processes.length;
+}
+
+/**
+ * Kills a process and everything it started.
+ *
+ * @param child the process to kill.
+ * @param signal the signal to send.
+ */
+export function killProcessTree(child: cp.ChildProcess, signal: NodeJS.Signals = sendSignal): void {
+	if (child.pid === undefined) {
+		return;
+	}
+	if (process.platform === 'win32') {
+		// Windows has no process groups, so the tree is walked by taskkill.
+		try {
+			cp.execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+		} catch (e) {
+			// The process is gone already, or could not be killed.
+		}
+		return;
+	}
+	try {
+		// The negative pid addresses the whole process group. The child leads
+		// its own group, because it was spawned detached.
+		process.kill(-child.pid, signal);
+	} catch (e) {
+		try {
+			child.kill(signal);
+		} catch (e2) {
+			// The process is gone already.
+		}
+	}
+}
+
+
 const outputChannel = vscode.window.createOutputChannel('Go Test Explorer');
 
 /**
@@ -85,7 +135,7 @@ export function isToolAvailable(tool: string): boolean {
 /**
  * Input to goTest.
  */
-export function runGoTest(testconfig: TestConfig): Promise<RawTestResult> {
+export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationToken): Promise<RawTestResult> {
 	return new Promise<RawTestResult>((resolve, reject) => {
 
 		// We do not want to clear it if tests are already running, as that could
@@ -146,9 +196,21 @@ export function runGoTest(testconfig: TestConfig): Promise<RawTestResult> {
 
 			args.push(...targets);
 
-			let tp = cp.spawn(goRuntimePath, args, { env: testEnvVars, cwd: testconfig.dir });
+			// The child leads its own process group, so the whole tree can be
+			// killed when the run is cancelled. A detached child outlives the
+			// extension host, so the runs are killed when the window closes.
+			const detached = process.platform !== 'win32';
+			let tp = cp.spawn(goRuntimePath, args, { env: testEnvVars, cwd: testconfig.dir, detached });
 			const parser = new GoTestJsonParser();
 			const errBuf = new LineBuffer();
+
+			if (token) {
+				if (token.isCancellationRequested) {
+					killProcessTree(tp);
+				} else {
+					token.onCancellationRequested(() => killProcessTree(tp));
+				}
+			}
 
 			// The output of the run is written as it arrives, so a long run
 			// shows its progress.

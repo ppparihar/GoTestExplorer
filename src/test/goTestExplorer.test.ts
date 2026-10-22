@@ -141,6 +141,13 @@ describe('GoTestExplorer', () => {
 		const alpha = results.find(r => r.testName === 'TestAlpha');
 		expect(alpha.isPassed).toBe(true);
 	});
+
+	it('says that nothing was running when the run is cancelled and nothing is', async () => {
+		await vscode.commands.executeCommand('goTestExplorer.cancelTestRun');
+
+		expect(__state.messages.info.length).toBe(1);
+		expect(__state.messages.info[0]).toContain('No test run is in progress');
+	});
 });
 
 describe('GoTestExplorer go-to-location', () => {

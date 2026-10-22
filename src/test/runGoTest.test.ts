@@ -2,9 +2,10 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { runGoTest, isToolAvailable } from '../lib/testUtil';
+import cp = require('child_process');
+import { runGoTest, isToolAvailable, cancelRunningTests } from '../lib/testUtil';
 import { buildRunRegex } from '../lib/testArgs';
-import { __state, __reset, __setConfiguration, Uri, WorkspaceConfiguration } from './mocks/vscode';
+import { __state, __reset, __setConfiguration, CancellationToken, CancellationTokenSource, Uri, WorkspaceConfiguration } from './mocks/vscode';
 
 /**
  * These tests run the real Go toolchain against a fixture, so they are
@@ -34,11 +35,23 @@ const SIBLING = `
 func TestPassingExtra(t *testing.T) {}
 `;
 
+const SLOW = `package cancelfixture
+
+import (
+	"testing"
+	"time"
+)
+
+func TestSlow(t *testing.T) {
+	time.Sleep(60 * time.Second)
+}
+`;
+
 let fixture: string;
 
 beforeAll(() => {
 	fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'gtest-exec-'));
-	fs.writeFileSync(path.join(fixture, 'go.mod'), 'module fixture\n\ngo 1.21\n');
+	fs.writeFileSync(path.join(fixture, 'go.mod'), 'module gotestexplorerfixture\n\ngo 1.21\n');
 });
 
 afterAll(() => {
@@ -53,7 +66,7 @@ beforeEach(() => {
 /**
  * Runs the tests of the fixture and returns the outcome.
  */
-async function runFixture(functions: string[], body: string = FAILING) {
+async function runFixture(functions: string[], body: string = FAILING, token?: CancellationToken) {
 	const file = path.join(fixture, 'a_test.go');
 	fs.writeFileSync(file, body);
 
@@ -64,7 +77,7 @@ async function runFixture(functions: string[], body: string = FAILING) {
 		functions,
 		testUri: Uri.file(file),
 		testName: 'a_test.go'
-	});
+	}, token);
 }
 
 describe.skipIf(!hasGo)('runGoTest', () => {
@@ -149,3 +162,70 @@ describe.skipIf(!hasGo)('the -run regex', () => {
 		expect(regex.test('TestPassingExtra')).toBe(false);
 	});
 });
+
+describe.skipIf(!hasGo)('cancelling a run', () => {
+	it('stops a run when the token is cancelled', async () => {
+		const source = new CancellationTokenSource();
+		const started = Date.now();
+		const run = runFixture(['TestSlow'], SLOW, source.token);
+
+		// The run needs a moment to start the tool.
+		await new Promise(resolve => setTimeout(resolve, 500));
+		source.cancel();
+
+		const result = await run;
+		expect(result.isPassed).toBe(false);
+		// The test sleeps for a minute, so a run that ended in seconds was
+		// stopped rather than waited for.
+		expect(Date.now() - started).toBeLessThan(30 * 1000);
+	});
+
+	it('stops every run that is in flight', async () => {
+		const started = Date.now();
+		const run = runFixture(['TestSlow'], SLOW);
+
+		// The process is registered a moment after the run is started.
+		let stopped = 0;
+		for (let attempt = 0; attempt < 50 && stopped === 0; attempt++) {
+			await new Promise(resolve => setTimeout(resolve, 100));
+			stopped = cancelRunningTests();
+		}
+
+		expect(stopped).toBeGreaterThan(0);
+		const result = await run;
+		expect(result.isPassed).toBe(false);
+		expect(Date.now() - started).toBeLessThan(30 * 1000);
+	});
+
+	it('reports that nothing was running when there is nothing to stop', () => {
+		expect(cancelRunningTests()).toBe(0);
+	});
+
+	it.skipIf(process.platform === 'win32')('kills the test binary, not only the tool', async () => {
+		const source = new CancellationTokenSource();
+		const run = runFixture(['TestSlow'], SLOW, source.token);
+
+		// The tool compiles the package and runs its binary.
+		await new Promise(resolve => setTimeout(resolve, 2000));
+		expect(testBinaryRunning()).toBe(true);
+
+		source.cancel();
+		await run;
+
+		// The binary is killed with the tool, so it does not keep running.
+		await new Promise(resolve => setTimeout(resolve, 1000));
+		expect(testBinaryRunning()).toBe(false);
+	});
+});
+
+/**
+ * Reports whether the binary the tool compiled is still running.
+ */
+function testBinaryRunning(): boolean {
+	try {
+		const listing = cp.execFileSync('ps', ['-eo', 'comm']).toString();
+		return listing.split('\n').some(line => line.trim().endsWith('gotestexplorerfixture.test'));
+	} catch (e) {
+		return false;
+	}
+}

@@ -150,6 +150,48 @@ describe('TestQueue', () => {
 		await vi_waitFor(() => queue.pending === 0 && queue.running === 0);
 		expect(completed).toEqual(['AFTER']);
 	});
+
+	it('drops the work that has not started when it is cancelled', async () => {
+		const completed: string[] = [];
+		let release: () => void;
+		const held = new Promise<void>(resolve => { release = resolve; });
+		const queue = new TestQueue(
+			async () => { await held; return ok(); },
+			1,
+			(config) => { completed.push(config.testName); },
+			() => { });
+
+		queue.enqueue(makeConfig('HELD'));
+		queue.enqueue(makeConfig('QUEUED'));
+
+		// The first invocation holds the only slot, so the second one waits.
+		await vi_waitFor(() => queue.running === 1);
+		queue.cancel();
+
+		release();
+		await vi_waitFor(() => queue.pending === 0 && queue.running === 0);
+
+		expect(completed).toEqual(['HELD']);
+	});
+
+	it('keeps the slot it released for the work that did not start', async () => {
+		const completed: string[] = [];
+		const queue = new TestQueue(
+			async (config) => { completed.push(config.testName); return ok(); },
+			1,
+			(config) => { completed.push(`done:${config.testName}`); },
+			() => { });
+
+		queue.enqueue(makeConfig('A'));
+		queue.enqueue(makeConfig('B'));
+		queue.cancel();
+
+		await vi_waitFor(() => queue.pending === 0 && queue.running === 0);
+
+		// The first invocation was already running, so it is not dropped.
+		expect(completed).toContain('done:A');
+		expect(completed).not.toContain('done:B');
+	});
 });
 
 /**

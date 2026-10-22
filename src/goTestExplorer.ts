@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { GoTestProvider } from './goTestProvider';
-import { runGoTest, TestConfig } from './lib/testUtil';
+import { runGoTest, TestConfig, cancelRunningTests } from './lib/testUtil';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
@@ -35,6 +35,15 @@ export class GoTestExplorer {
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.runAllTest", this.onRunAllTests.bind(this)));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.refreshTestExplorer", () => {
             testDiscoverer.discoverAllTests();
+        }));
+        context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.cancelTestRun", () => {
+            // The invocations that have not started are dropped, and the ones
+            // that are running are killed.
+            this.testQueue.cancel();
+            const stopped = cancelRunningTests();
+            if (stopped === 0) {
+                vscode.window.showInformationMessage('No test run is in progress.');
+            }
         }));
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.showTestoutput", (testNode: TestNode) => {
             let output = testNode.testResult && testNode.testResult.output && testNode.testResult.output.length > 0 ? testNode.testResult.output.join("\n") : "No output";

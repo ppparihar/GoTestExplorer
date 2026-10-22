@@ -49,6 +49,11 @@
                     "command": "goTestExplorer.runAllTest",
                     "when": "view == goTestExplorer",
                     "group": "navigation@0"
+                },
+                {
+                    "command": "goTestExplorer.cancelTestRun",
+                    "when": "view == goTestExplorer",
+                    "group": "navigation@2"
                 }
             ],
             "view/item/context": [
@@ -67,6 +72,14 @@
             ]
         },
         "commands": [
+            {
+                "command": "goTestExplorer.cancelTestRun",
+                "title": "Cancel Test Run",
+                "icon": {
+                    "light": "resources/light/cancel.svg",
+                    "dark": "resources/dark/cancel.svg"
+                }
+            },
             {
                 "command": "goTestExplorer.refreshTestExplorer",
                 "title": "Refresh",

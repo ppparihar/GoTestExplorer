@@ -124,10 +124,10 @@ Each phase is independently shippable and independently verifiable.
 
 | Phase | Status | Evidence |
 |---|---|---|
-| Phase 0 — Baseline and test harness | Done | `npm test` runs 167 assertions across 12 files; `npm run bench` writes `bench/results/baseline.json` |
+| Phase 0 — Baseline and test harness | Done | `npm test` runs 179 assertions across 12 files; `npm run bench` writes `bench/results/baseline.json` |
 | Phase 1 — Correctness fixes | Done | C1–C12 applied; each fix has a regression test in `src/test/` |
 | Phase 2 — Discovery performance | Done | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0; a refresh over a warm cache costs 3.6 ms and a saved file reaches the tree without a manual refresh |
-| Phase 3 — Execution performance | In progress | 3a–3c done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, and the tree is redrawn once per run instead of once per test |
+| Phase 3 — Execution performance | In progress | 3a–3d done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, the tree is redrawn once per run instead of once per test, and a run can be cancelled — the whole process tree included |
 | Phase 4 — Toolchain and delivery | Partially done | TypeScript 5, `@types/vscode` 1.85, Vitest, `tsx` landed as Phase 0 prerequisites; the rest of Phase 4 is still open |
 | Phase 5 — Native Testing API | Not started | Deferred |
 | Phase 6 — Feature parity | Not started | Deferred |
@@ -329,7 +329,23 @@ the run has finished — for the node that holds the tests, so only that part of
 the tree is redrawn. `testCompleted` carries the URI of the file whose run
 finished, which is what the redraw is aimed at.
 
-**3d. Cancellation** — `src/lib/testUtil.ts:16` exposes `runningTestProcesses`; wire a "Cancel Test Run" command and `CancellationToken` support, killing the child process tree.
+**3d. Cancellation** — `src/lib/testUtil.ts:16` exposes `runningTestProcesses`; wire a "Cancel Test Run" command and `CancellationToken` support, killing the child process tree. — **Done**
+
+**Done.** The command `goTestExplorer.cancelTestRun` (in the title bar of the
+tree, next to "Run All") drops the invocations that have not started yet
+(`TestQueue.cancel()`) and kills the ones that are running
+(`cancelRunningTests()`); it says "No test run is in progress." when there is
+nothing to stop. `runGoTest` takes a `CancellationToken` and kills the run when
+it is cancelled.
+
+The whole **process tree** is killed, not only the `go` process: the tool runs
+the test binary as a child, and that binary would keep running — holding the
+build cache and whatever it listens on — if only its parent were killed. The
+child is therefore spawned detached, so it leads its own process group, and the
+group is killed with a negative pid. On Windows, which has no process groups,
+`taskkill /T /F` walks the tree instead. A detached child also outlives the
+extension host, so `deactivate()` stops the runs that are still going when the
+window closes.
 
 **3e. Single process for "Run All"**
 
@@ -348,7 +364,7 @@ Add `contributes.configuration` for: `maxParallelTests`, `skipFolders`, `goPath`
 **Exit criteria:**
 - A subtest failure marks its parent test failed. **Met** — the failed test is `TestAlpha/sub` and `TestAlpha` is reported as failed; `src/test/goTestExplorer.test.ts` covers it.
 - "Run All" across 10 packages spawns **1** `go test` process. **Open** — 3e.
-- A test run can be cancelled from the UI. **Open** — 3d.
+- A test run can be cancelled from the UI. **Met** — the "Cancel Test Run" command drops the runs that have not started and kills the ones that are running, and the whole process tree dies with them; `src/test/runGoTest.test.ts` proves that the test binary is gone after a cancellation, and `src/test/testQueue.test.ts` covers the queue.
 - The tree re-renders once per package, not once per test. **Met** — a suite of twenty tests redraws the tree once, when the run finishes; `src/test/goTestProvider.test.ts` counts the redraws.
 
 **Effort:** ~4 days.
