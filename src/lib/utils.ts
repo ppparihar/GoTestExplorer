@@ -162,26 +162,83 @@ export function promptForMissingTool(tool: string) {
 export function resetMissingToolWarnings(): void {
 	warnedTools.clear();
 }
+/**
+ * Splits a stream of text into lines.
+ *
+ * The chunks are kept in an array and a cursor walks them, so the work is
+ * proportional to the number of bytes seen. The earlier implementation kept
+ * the text that was left in a string and cut it back for every line, which
+ * copied the rest of the stream once per line.
+ */
 export class LineBuffer {
-	private buf: string = '';
-	private lineListeners: { (line: string): void; }[] = [];
-	private lastListeners: { (last: string): void; }[] = [];
+	private readonly chunks: string[] = [];
+	private scanChunk = 0;
+	private scanPos = 0;
+	private pending = '';
+	private readonly lineListeners: ((line: string) => void)[] = [];
+	private readonly lastListeners: ((last: string) => void)[] = [];
 
 	append(chunk: string) {
-		this.buf += chunk;
-		do {
-			const idx = this.buf.indexOf('\n');
-			if (idx === -1) {
-				break;
-			}
-
-			this.fireLine(this.buf.substring(0, idx));
-			this.buf = this.buf.substring(idx + 1);
-		} while (true);
+		if (chunk.length === 0) {
+			return;
+		}
+		this.chunks.push(chunk);
+		this.scan();
 	}
 
 	done() {
-		this.fireDone(this.buf !== '' ? this.buf : null);
+		const last = this.pending !== '' ? this.pending : null;
+		this.pending = '';
+		this.fireDone(last);
+	}
+
+	/**
+	 * Reads the lines that the chunks hold.
+	 */
+	private scan() {
+		while (this.scanChunk < this.chunks.length) {
+			const chunk = this.chunks[this.scanChunk];
+			const index = chunk.indexOf('\n', this.scanPos);
+			if (index === -1) {
+				// The chunk holds no line ending, so it is part of the line
+				// that is being read.
+				this.pending += chunk.substring(this.scanPos);
+				this.scanPos = chunk.length;
+				this.scanChunk++;
+				continue;
+			}
+			const text = chunk.substring(this.scanPos, index);
+			this.fireLine(this.pending === '' ? text : this.pending + text);
+			this.pending = '';
+			this.scanPos = index + 1;
+			if (this.scanPos >= chunk.length) {
+				this.scanChunk++;
+				this.scanPos = 0;
+			}
+		}
+		this.compact();
+	}
+
+	/**
+	 * Drops the chunks that have been read, so the array does not grow for
+	 * the whole life of the buffer.
+	 */
+	private compact() {
+		if (this.scanChunk === 0) {
+			return;
+		}
+		if (this.scanChunk >= this.chunks.length) {
+			// Every chunk has been read, so the next one starts at the
+			// beginning of the stream again.
+			this.chunks.length = 0;
+			this.scanChunk = 0;
+			this.scanPos = 0;
+			return;
+		}
+		if (this.scanChunk * 2 >= this.chunks.length) {
+			this.chunks.splice(0, this.scanChunk);
+			this.scanChunk = 0;
+		}
 	}
 
 	private fireLine(line: string) {

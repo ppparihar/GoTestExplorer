@@ -5,6 +5,7 @@ import path = require('path');
 import { getBinPathWithPreferredGopath, getBinPathFromEnvVar, envPath } from './goPath';
 import { getCurrentGoPath, getTestEnvVars, getToolsGopath, LineBuffer } from './utils';
 import { buildTargetArgs, resolveTestTimeout } from './testArgs';
+import { testOutput } from './testOutput';
 import { RawTestResult } from '../rawTestResult';
 import { GoTestJsonParser } from '../exec/goTestJsonParser';
 //const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
@@ -65,8 +66,6 @@ export function killProcessTree(child: cp.ChildProcess, signal: NodeJS.Signals =
 	}
 }
 
-
-const outputChannel = vscode.window.createOutputChannel('Go Test Explorer');
 
 /**
  * Input to goTest.
@@ -188,11 +187,11 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 		// We do not want to clear it if tests are already running, as that could
 		// lose valuable output.
 		if (runningTestProcesses.length < 1) {
-			outputChannel.clear();
+			testOutput.clear();
 		}
 
 		if (!testconfig.background) {
-			outputChannel.show(true);
+			testOutput.show(true);
 		}
 
 		let buildTags: string = testconfig.goConfig['buildTags'];
@@ -219,8 +218,8 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 		if (!goRuntimePath) {
 			const message = 'Cannot find "go" binary. Update PATH or GOROOT appropriately';
 			vscode.window.showInformationMessage(message);
-			outputChannel.appendLine(`Error: ${testType} failed.`);
-			outputChannel.appendLine(message);
+			testOutput.writeLine(`Error: ${testType} failed.`);
+			testOutput.writeLine(message);
 			resolve(new RawTestResult(false, [], [], new Error(message)));
 			return;
 		}
@@ -238,8 +237,8 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 			} else {
 				outTargets.push(...targets);
 			}
-			outputChannel.appendLine(['Running tool:', goRuntimePath, ...outTargets].join(' '));
-			outputChannel.appendLine('');
+			testOutput.writeLine(['Running tool:', goRuntimePath, ...outTargets].join(' '));
+			testOutput.writeLine('');
 
 			args.push(...targets);
 
@@ -263,30 +262,30 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 			// shows its progress.
 			tp.stdout.on('data', chunk => {
 				const parsed = parser.write(chunk.toString());
-				parsed.output.forEach(line => outputChannel.appendLine(line));
-				parsed.buildOutput.forEach(line => outputChannel.appendLine(expandFilePathInOutput(line, testconfig.dir)));
+				parsed.output.forEach(line => testOutput.writeLine(line));
+				parsed.buildOutput.forEach(line => testOutput.writeLine(expandFilePathInOutputLine(line, testconfig.dir)));
 			});
 
 			// go test emits anything that is not part of the event stream on
 			// stderr, which contains paths relative to the cwd.
-			errBuf.onLine(line => outputChannel.appendLine(expandFilePathInOutput(line, testconfig.dir)));
-			errBuf.onDone(last => last && outputChannel.appendLine(expandFilePathInOutput(last, testconfig.dir)));
+			errBuf.onLine(line => testOutput.writeLine(expandFilePathInOutputLine(line, testconfig.dir)));
+			errBuf.onDone(last => last && testOutput.writeLine(expandFilePathInOutputLine(last, testconfig.dir)));
 
 			tp.stderr.on('data', chunk => errBuf.append(chunk.toString()));
 
 			tp.on('close', (code, signal) => {
 				const parsed = parser.end();
-				parsed.output.forEach(line => outputChannel.appendLine(line));
-				parsed.buildOutput.forEach(line => outputChannel.appendLine(expandFilePathInOutput(line, testconfig.dir)));
+				parsed.output.forEach(line => testOutput.writeLine(line));
+				parsed.buildOutput.forEach(line => testOutput.writeLine(expandFilePathInOutputLine(line, testconfig.dir)));
 
 				errBuf.done();
 
 				if (code) {
-					outputChannel.appendLine(`Error: ${testType} failed.`);
+					testOutput.writeLine(`Error: ${testType} failed.`);
 				} else if (signal === sendSignal) {
-					outputChannel.appendLine(`Error: ${testType} terminated by user.`);
+					testOutput.writeLine(`Error: ${testType} terminated by user.`);
 				} else {
-					outputChannel.appendLine(`Success: ${testType} passed.`);
+					testOutput.writeLine(`Success: ${testType} passed.`);
 				}
 
 				let index = runningTestProcesses.indexOf(tp, 0);
@@ -306,29 +305,39 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 			runningTestProcesses.push(tp);
 
 		}, err => {
-			outputChannel.appendLine(`Error: ${testType} failed.`);
-			outputChannel.appendLine(err);
+			testOutput.writeLine(`Error: ${testType} failed.`);
+			testOutput.writeLine(err);
 			resolve(new RawTestResult(false, [], err));
 		});
 	});
 }
 
 /**
+ * The path of a Go file in a line of output, with the line number after it.
+ */
+const goFileInOutput = /(\S+\.go):(\d+):/g;
+
+/**
  * Makes the path of a Go file in a line of output absolute.
  *
  * The tool prints the path of a file relative to the directory it ran in.
  *
+ * The line is scanned once, and every path in it is expanded where it
+ * stands. The earlier implementation replaced the first occurrence of the
+ * path in the line, which was not always the path of the message: a line
+ * that names a file before the message expanded the wrong one.
+ *
  * @param line the line of output.
  * @param cwd the directory the tool ran in.
+ * @returns the line with the paths of Go files made absolute.
  */
-function expandFilePathInOutput(line: string, cwd: string): string {
-	// The path group is matched non-greedily and cannot contain whitespace,
-	// so a line holding two paths cannot bind the wrong one.
-	const matches = line.match(/^\s*(\S+\.go):(\d+):/);
-	if (matches && matches[1] && !path.isAbsolute(matches[1])) {
-		return line.replace(matches[1], path.join(cwd, matches[1]));
-	}
-	return line;
+export function expandFilePathInOutputLine(line: string, cwd: string): string {
+	return line.replace(goFileInOutput, (match, file: string, lineNumber: string) => {
+		if (path.isAbsolute(file)) {
+			return match;
+		}
+		return path.join(cwd, file) + ':' + lineNumber + ':';
+	});
 }
 
 /**

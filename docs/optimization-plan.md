@@ -59,7 +59,7 @@ look now.
 | P4 | Skip list is only `vendor`, `.vscode`, `.git`. | `src/config.ts:3` | `node_modules`, `testdata`, `dist`, `build`, `out`, `third_party`, `proto`, `generated` are all walked. `testdata` is a Go convention that must be skipped. |
 | P5 | **One tree refresh per test result.** `onDidChangeTreeData.fire` runs for every individual test result. | `src/goTestProvider.ts:64-71` | An N-test suite triggers N full tree re-renders. |
 | P6 | No result cache, no incremental discovery, no file watcher. Every "Refresh" redoes the whole pipeline. | `src/goTestExplorer.ts:28-30`, `src/testDiscovery.ts:15` | — |
-| P7 | Quadratic string handling in output capture: `LineBuffer.append` does `buf += chunk` then `substring` per line; `expandFilePathInOutput` re-splits the whole string per chunk. | `src/lib/utils.ts:178-189`, `src/lib/testUtil.ts:237-246` | O(n²) on large test output. |
+| P7 | Quadratic string handling in output capture: `LineBuffer.append` does `buf += chunk` then `substring` per line; `expandFilePathInOutput` re-splits the whole string per chunk. | `src/lib/utils.ts:178-189`, `src/lib/testUtil.ts:237-246` | O(n²) on large test output. **Fixed (3f)**: the buffer keeps the chunks and a cursor, and the path of a file is expanded where it stands. |
 | P8 | "Run All" spawns one `go test` per package. | `src/goTestExplorer.ts:58-62` | Each pays a separate compile+link. A single `go test ./...` amortizes the build. |
 | P9 | No cancellation. `runningTestProcesses` is tracked but never exposed. | `src/lib/testUtil.ts:16`, `src/lib/testUtil.ts:217-220` | A hung test cannot be stopped. |
 | P10 | Byte-offset conversion machinery exists only because `go-outline` reports byte offsets. | `src/lib/utils.ts:153-172`, `src/lib/avlTree.ts` (262 lines) | A line/character-based scanner removes the need and deletes `avlTree.ts`. |
@@ -124,10 +124,10 @@ Each phase is independently shippable and independently verifiable.
 
 | Phase | Status | Evidence |
 |---|---|---|
-| Phase 0 — Baseline and test harness | Done | `npm test` runs 205 assertions across 13 files; `npm run bench` writes `bench/results/baseline.json` |
+| Phase 0 — Baseline and test harness | Done | `npm test` runs 242 assertions across 16 files; `npm run bench` writes `bench/results/baseline.json` |
 | Phase 1 — Correctness fixes | Done | C1–C12 applied; each fix has a regression test in `src/test/` |
 | Phase 2 — Discovery performance | Done | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0; a refresh over a warm cache costs 3.6 ms and a saved file reaches the tree without a manual refresh |
-| Phase 3 — Execution performance | In progress | 3a–3e done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, the tree is redrawn once per run instead of once per test, a run can be cancelled — the whole process tree included — and "Run All" tests every package of a module in one process |
+| Phase 3 — Execution performance | In progress | 3a–3f done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, the tree is redrawn once per run instead of once per test, a run can be cancelled — the whole process tree included — "Run All" tests every package of a module in one process, and the output of a run goes to a terminal that can stop it with Ctrl+C |
 | Phase 4 — Toolchain and delivery | Partially done | TypeScript 5, `@types/vscode` 1.85, Vitest, `tsx` landed as Phase 0 prerequisites; the rest of Phase 4 is still open |
 | Phase 5 — Native Testing API | Not started | Deferred |
 | Phase 6 — Feature parity | Not started | Deferred |
@@ -379,11 +379,44 @@ path of the package relative to the module root. It is computed rather than
 guessed, because a suffix match picks the wrong package in a workspace that
 holds more than one module.
 
-**3f. Output handling**
+**3f. Output handling** — **Done**
 
 - Replace `LineBuffer` (`src/lib/utils.ts:173-210`) with a chunk-array + index implementation → O(n) instead of O(n²).
 - Replace the `expandFilePathInOutput` full-string resplit (`src/lib/testUtil.ts:237-246`) with per-line handling.
 - Move output to a `vscode.Terminal` (with `go test` output decorations) instead of an output channel; the Terminal API gives cancellation and a real scrollback for free.
+
+**Done.** The output of a run is written to a terminal instead of an output
+channel. The terminal is made when the first run writes to it, so the
+extension does not open a terminal of its own when it starts, and it keeps a
+scrollback: the output of the last runs stays where the user can scroll back
+to it. A run that nobody looks at is not lost either — a terminal that has not
+been opened yet drops what is written to it, so the output is kept until the
+terminal is opened.
+
+The lines of the output are given the colour that says what they mean: a
+failure is red, a pass is green, a skipped test is yellow, and the lines the
+extension itself writes ("Running tool:", "Success:", "Error:") are coloured
+to match.
+
+**Ctrl+C in the terminal stops the runs**, the way it stops a command in any
+other terminal. The terminal passes the key to the extension, which drops the
+runs that have not started and kills the ones that are running — the same
+thing the "Cancel Test Run" command does.
+
+The buffer that splits the output into lines no longer keeps the text that is
+left in a string and cuts it back for every line, which copied the rest of the
+stream once per line. The chunks are kept in an array and a cursor walks them,
+so every byte is read once, and the chunks that have been read are dropped
+instead of being held for the whole run. The text of a line that spans several
+chunks is kept on its own, so a line that is cut in half by a chunk boundary
+is still reported whole.
+
+The path of a Go file in a line of output is made absolute where it stands:
+the line is scanned once and every path in it is expanded. The earlier
+implementation replaced the *first* occurrence of the path in the line, which
+was not always the path of the message — a line that names a file before the
+message expanded the wrong one — and it expanded only the first path of a
+line.
 
 **3g. Configuration**
 

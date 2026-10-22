@@ -126,15 +126,22 @@ describe.skipIf(!hasGo)('runGoTest', () => {
 		expect(result.output.join('\n')).toContain('boom');
 	});
 
-	it('writes the output to the output channel', async () => {
-		// The channel is created when the runner module is loaded, and a run
-		// clears it before it writes, so it holds the output of this run.
-		const channel = __state.outputChannels[__state.outputChannels.length - 1];
-
+	it('writes the output to the terminal', async () => {
 		await runFixture(['TestFailing']);
 
-		expect(channel.name).toBe('Go Test Explorer');
-		expect(channel.lines.join('\n')).toContain('boom');
+		// The terminal is made when the first run writes to it.
+		const terminal = __state.terminals[__state.terminals.length - 1];
+
+		expect(terminal.name).toBe('Go Test Explorer');
+		expect(terminal.text).toContain('boom');
+	});
+
+	it('shows the terminal of the output', async () => {
+		await runFixture(['TestFailing']);
+
+		const terminal = __state.terminals[__state.terminals.length - 1];
+
+		expect(terminal.shown).toBe(true);
 	});
 
 	it('reports a package that does not build', async () => {

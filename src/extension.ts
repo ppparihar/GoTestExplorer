@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import { GoTestExplorer } from './goTestExplorer';
 import { isToolAvailable, cancelRunningTests } from './lib/testUtil';
+import { testOutput } from './lib/testOutput';
 
 
 // this method is called when your extension is activated
@@ -25,4 +26,7 @@ export function deactivate() {
     // A test run that is still going is stopped, so it does not outlive the
     // window that started it.
     cancelRunningTests();
+    // The terminal of the output belongs to the extension, so it goes away
+    // with it.
+    testOutput.dispose();
 }

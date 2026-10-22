@@ -319,6 +319,71 @@ export interface MockTextEditor {
 	revealRange(range: Range, type?: TextEditorRevealType): void;
 }
 
+/**
+ * The shape of a pseudoterminal, as the mock uses it.
+ */
+export interface MockPseudoterminal {
+	onDidWrite?: (listener: (data: string) => void) => Disposable;
+	open?: (dimensions: unknown) => void;
+	close?: () => void;
+	handleInput?: (data: string) => void;
+}
+
+/**
+ * A stand-in for a terminal.
+ *
+ * The terminal records what is written to it, and it opens the pseudoterminal
+ * when it is shown, the way the real terminal does: a terminal that has not
+ * been opened drops what is written to it.
+ */
+export class MockTerminal {
+	/**
+	 * Everything that has been written to the terminal.
+	 */
+	text = '';
+	/**
+	 * Whether the pseudoterminal has been opened.
+	 */
+	opened = false;
+	/**
+	 * Whether the terminal has been shown.
+	 */
+	shown = false;
+
+	constructor(
+		public readonly name: string,
+		private readonly pty?: MockPseudoterminal) {
+		if (this.pty?.onDidWrite) {
+			this.pty.onDidWrite(data => { this.text += data; });
+		}
+	}
+
+	/**
+	 * The lines that have been written to the terminal.
+	 */
+	get lines(): string[] {
+		return this.text.split(/\r?\n/).filter(line => line !== '');
+	}
+
+	show(_preserveFocus?: boolean): void {
+		this.shown = true;
+		if (!this.opened) {
+			this.opened = true;
+			this.pty?.open?.(undefined);
+		}
+	}
+
+	hide(): void { }
+
+	sendText(text: string): void {
+		this.pty?.handleInput?.(text);
+	}
+
+	dispose(): void {
+		this.pty?.close?.();
+	}
+}
+
 export const __state = {
 	workspaceFolders: undefined as WorkspaceFolder[] | undefined,
 	rootPath: undefined as string | undefined,
@@ -342,7 +407,11 @@ export const __state = {
 	/**
 	 * The output channels the code under test has created.
 	 */
-	outputChannels: [] as { name: string; lines: string[]; }[]
+	outputChannels: [] as { name: string; lines: string[]; }[],
+	/**
+	 * The terminals the code under test has created.
+	 */
+	terminals: [] as MockTerminal[]
 };
 
 /**
@@ -496,6 +565,11 @@ export const window = {
 			dispose(): void { },
 			lines
 		};
+	},
+	createTerminal(options: { name: string; pty?: MockPseudoterminal }) {
+		const terminal = new MockTerminal(options.name, options.pty);
+		__state.terminals.push(terminal);
+		return terminal;
 	},
 	registerTreeDataProvider(_id: string, _provider: unknown): Disposable {
 		return new Disposable();

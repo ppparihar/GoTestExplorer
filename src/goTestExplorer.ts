@@ -12,6 +12,7 @@ import { TestQueue } from './runner/testQueue';
 import { scanGoSource } from './discovery/goScanner';
 import { hasFailed, PackageResult } from './exec/goTestJsonParser';
 import { findGoModule, GoModule, importPathOf } from './lib/goModule';
+import { testOutput } from './lib/testOutput';
 
 /**
  * The files of one module, and the packages they belong to.
@@ -55,7 +56,7 @@ export class GoTestExplorer {
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.refreshTestExplorer", () => {
             testDiscoverer.discoverAllTests();
         }));
-        context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.cancelTestRun", () => {
+        const cancelTestRun = () => {
             // The invocations that have not started are dropped, and the ones
             // that are running are killed.
             this.testQueue.cancel();
@@ -63,7 +64,11 @@ export class GoTestExplorer {
             if (stopped === 0) {
                 vscode.window.showInformationMessage('No test run is in progress.');
             }
-        }));
+        };
+        context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.cancelTestRun", cancelTestRun));
+        // Ctrl+C in the terminal of the output stops the runs, the way it
+        // stops a command in any other terminal.
+        testOutput.setCancelHandler(cancelTestRun);
         context.subscriptions.push(vscode.commands.registerCommand("goTestExplorer.showTestoutput", (testNode: TestNode) => {
             let output = testNode.testResult && testNode.testResult.output && testNode.testResult.output.length > 0 ? testNode.testResult.output.join("\n") : "No output";
             vscode.window.showInformationMessage(output);

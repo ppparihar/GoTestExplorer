@@ -9,6 +9,7 @@ import { TestResult } from '../testResult';
 import { RawTestResult } from '../rawTestResult';
 import { PackageResult } from '../exec/goTestJsonParser';
 import { __reset, __setDocumentText, __state, Uri } from './mocks/vscode';
+import { testOutput } from '../lib/testOutput';
 
 const runGoTest = vi.fn();
 
@@ -148,6 +149,17 @@ describe('GoTestExplorer', () => {
 
 	it('says that nothing was running when the run is cancelled and nothing is', async () => {
 		await vscode.commands.executeCommand('goTestExplorer.cancelTestRun');
+
+		expect(__state.messages.info.length).toBe(1);
+		expect(__state.messages.info[0]).toContain('No test run is in progress');
+	});
+
+	it('cancels the run when the user presses Ctrl+C in the terminal', async () => {
+		// The terminal of the output is made when something is written to it.
+		testOutput.writeLine('running');
+		const terminal = __state.terminals[__state.terminals.length - 1];
+
+		terminal.sendText('\x03');
 
 		expect(__state.messages.info.length).toBe(1);
 		expect(__state.messages.info[0]).toContain('No test run is in progress');
