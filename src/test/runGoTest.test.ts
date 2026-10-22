@@ -160,6 +160,31 @@ describe.skipIf(!hasGo)('runGoTest reports a test as soon as it finishes', () =>
   });
 });
 
+describe.skipIf(!hasGo)('runGoTest when the process cannot be started', () => {
+  it('fails the run instead of waiting for ever', async () => {
+    // More arguments than any operating system accepts, so the spawn fails.
+    const packages = Array.from({ length: 300000 }, (_, index) => ({
+      importPath: `gotestexplorerfixture/pkg${index}`,
+      path: `pkg${index}`,
+      files: [] as { uri: Uri; name: string; functions: string[] }[],
+    }));
+
+    const result = await runGoTest({
+      dir: fixture,
+      settings: { buildTags: '', testFlags: [], timeout: '60s', envFile: '', env: {} },
+      flags: [],
+      functions: [],
+      testUri: Uri.file(path.join(fixture, 'a_test.go')),
+      testName: 'a_test.go',
+      packages,
+    });
+
+    expect(result.isPassed).toBe(false);
+    expect(result.err).toBeInstanceOf(Error);
+    expect(result.failedTests).toEqual([]);
+  }, 10000);
+});
+
 describe.skipIf(!hasGo)('runGoTest', () => {
   it('reports a test that failed', async () => {
     const result = await runFixture(['TestFailing']);
