@@ -62,7 +62,9 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  fs.rmSync(fixture, { recursive: true, force: true });
+  // On Windows the build cache or a test binary can still hold the directory
+  // for a moment after the run, so retry instead of failing the suite.
+  fs.rmSync(fixture, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
 beforeEach(() => {

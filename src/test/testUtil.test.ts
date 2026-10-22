@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as path from 'path';
 import { expandFilePathInOutputLine } from '../lib/testUtil';
 
 const cwd = '/repo';
@@ -6,7 +7,7 @@ const cwd = '/repo';
 describe('expandFilePathInOutputLine', () => {
   it('makes the path of a file absolute', () => {
     expect(expandFilePathInOutputLine('alpha_test.go:8: boom', cwd)).toBe(
-      '/repo/alpha_test.go:8: boom',
+      path.join(cwd, 'alpha_test.go') + ':8: boom',
     );
   });
 
@@ -18,7 +19,7 @@ describe('expandFilePathInOutputLine', () => {
 
   it('makes the path of a file in a directory absolute', () => {
     expect(expandFilePathInOutputLine('pkg/alpha_test.go:8: boom', cwd)).toBe(
-      '/repo/pkg/alpha_test.go:8: boom',
+      path.join(cwd, 'pkg', 'alpha_test.go') + ':8: boom',
     );
   });
 
@@ -26,7 +27,7 @@ describe('expandFilePathInOutputLine', () => {
     const line = 'alpha_test.go:8: boom and beta_test.go:9: bang';
 
     expect(expandFilePathInOutputLine(line, cwd)).toBe(
-      '/repo/alpha_test.go:8: boom and /repo/beta_test.go:9: bang',
+      `${path.join(cwd, 'alpha_test.go')}:8: boom and ${path.join(cwd, 'beta_test.go')}:9: bang`,
     );
   });
 
@@ -34,7 +35,7 @@ describe('expandFilePathInOutputLine', () => {
     const line = 'see alpha_test.go for details: alpha_test.go:8: boom';
 
     expect(expandFilePathInOutputLine(line, cwd)).toBe(
-      'see alpha_test.go for details: /repo/alpha_test.go:8: boom',
+      `see alpha_test.go for details: ${path.join(cwd, 'alpha_test.go')}:8: boom`,
     );
   });
 

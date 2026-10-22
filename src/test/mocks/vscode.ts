@@ -118,7 +118,16 @@ export class Uri {
   }
 
   get fsPath(): string {
-    return this.fsPathOverride ?? this.path;
+    if (this.fsPathOverride !== undefined) {
+      return this.fsPathOverride;
+    }
+    // Like the real Uri on Windows: `/C:/repo` reads back as `C:\repo`. The
+    // real one also lowercases the drive letter; the mock keeps it so that a
+    // path survives a round trip through `Uri.file`.
+    if (process.platform === 'win32' && /^\/[a-zA-Z]:/.test(this.path)) {
+      return this.path.slice(1).replace(/\//g, '\\');
+    }
+    return this.path;
   }
 
   with(change: { path?: string; scheme?: string }): Uri {
