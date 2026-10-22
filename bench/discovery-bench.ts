@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { discoverTests } from '../src/discovery/discover';
+import { ScanCache } from '../src/discovery/scanCache';
 
 export interface DiscoveryResult {
 	files: number;
@@ -56,6 +57,27 @@ export async function runDiscoveryBench(root: string): Promise<DiscoveryResult> 
 
 	try {
 		const suites = await discoverTests(root);
+		const tests = suites.reduce((sum, suite) => sum + suite.declarations.length, 0);
+
+		const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
+		return { files: suites.length, tests, durationMs, spawns: counter.getCount() };
+	} finally {
+		counter.restore();
+	}
+}
+
+/**
+ * Measures a discovery that reuses a cache of scan results.
+ *
+ * This is what the extension does when the tree is refreshed and no file has
+ * changed: the files are stat-ed but not read and parsed again.
+ */
+export async function runCachedDiscoveryBench(root: string, cache: ScanCache): Promise<DiscoveryResult> {
+	const started = process.hrtime.bigint();
+	const counter = countSpawns();
+
+	try {
+		const suites = await discoverTests(root, { cache });
 		const tests = suites.reduce((sum, suite) => sum + suite.declarations.length, 0);
 
 		const durationMs = Number(process.hrtime.bigint() - started) / 1e6;

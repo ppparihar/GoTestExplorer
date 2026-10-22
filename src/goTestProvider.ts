@@ -10,14 +10,16 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<TestNode | undefined>();
 	readonly onDidChangeTreeData: vscode.Event<TestNode | undefined> = this._onDidChangeTreeData.event;
 
-	private __discoveredTestsMap: Map<string, TestNode>;
-	private _discoveredTests: TestNode[];
+	private __discoveredTestsMap: Map<string, TestNode> = new Map();
+	private _discoveredTests: TestNode[] = [];
 	private _discovering: boolean;
 	constructor(private context: vscode.ExtensionContext, commands: Commands) {
 		context.subscriptions.push(commands.discoveredTest(this.onDicoveredTest, this));
 		context.subscriptions.push(commands.testDiscoveryStarted(this.onDiscoverTestStart, this));
 		context.subscriptions.push(commands.testResult(this.updateTestResult, this));
 		context.subscriptions.push(commands.testRunStarted(this.onTestRunStarted, this));
+		context.subscriptions.push(commands.testFileChanged(this.onTestFileChanged, this));
+		context.subscriptions.push(commands.testFileRemoved(this.onTestFileRemoved, this));
 	}
 
 	private refresh(testNode?: TestNode): void {
@@ -79,19 +81,70 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		this._discoveredTests = testNodeList && testNodeList.length > 0 ? testNodeList : [];
 
 		this.__discoveredTestsMap = new Map();
-		this._discoveredTests.forEach(x => {
-			if (x.isTestSuite) {
-				x.children.forEach(node => {
-					this.registerNode(node, previousMap);
-				});
-				this.registerNode(x, previousMap);
-			} else {
-				this.registerNode(x, previousMap);
-			}
-		});
+		this._discoveredTests.forEach(x => this.registerNodeTree(x, previousMap));
 
 		this._discovering = false;
 		this.refresh();
+	}
+
+	/**
+	 * Replaces the node for one file, without rebuilding the rest of the
+	 * tree.
+	 *
+	 * The outcome of tests that have already run is carried over, exactly as
+	 * a full refresh does.
+	 */
+	private onTestFileChanged(testNode: TestNode) {
+		const filePath = testNode.uri.fsPath;
+		const previous = this.takeEntriesFor(filePath);
+
+		const index = this._discoveredTests.findIndex(node => node.uri.fsPath === filePath);
+		if (index >= 0) {
+			this._discoveredTests[index] = testNode;
+		} else {
+			this._discoveredTests.push(testNode);
+		}
+
+		this.registerNodeTree(testNode, previous);
+		this.refresh();
+	}
+
+	/**
+	 * Drops the node for a file that no longer holds tests.
+	 */
+	private onTestFileRemoved(filePath: string) {
+		const index = this._discoveredTests.findIndex(node => node.uri.fsPath === filePath);
+		if (index >= 0) {
+			this._discoveredTests.splice(index, 1);
+		}
+		this.takeEntriesFor(filePath);
+		this.refresh();
+	}
+
+	/**
+	 * Registers a node and, when it is a suite, its children.
+	 */
+	private registerNodeTree(node: TestNode, previousMap: Map<string, TestNode>) {
+		if (node.isTestSuite) {
+			node.children.forEach(child => this.registerNodeTree(child, previousMap));
+		}
+		this.registerNode(node, previousMap);
+	}
+
+	/**
+	 * Removes the lookup entries for one file and returns them, so that the
+	 * outcome of the tests it holds can be carried over to the new nodes.
+	 */
+	private takeEntriesFor(filePath: string): Map<string, TestNode> {
+		const prefix = filePath + "__";
+		const taken = new Map<string, TestNode>();
+		this.__discoveredTestsMap.forEach((node, key) => {
+			if (key.startsWith(prefix)) {
+				taken.set(key, node);
+				this.__discoveredTestsMap.delete(key);
+			}
+		});
+		return taken;
 	}
 
 	/**

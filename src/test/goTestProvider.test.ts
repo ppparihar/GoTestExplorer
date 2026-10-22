@@ -88,6 +88,56 @@ describe('GoTestProvider', () => {
 		expect(provider.discoveredTests).toEqual([]);
 	});
 
+	it('replaces the node for a file that changed', () => {
+		commands.sendDiscoveredTests([buildSuite()]);
+
+		const updated = new TestNode('alpha_test.go', fileUri, [new TestNode('TestBravo', fileUri)]);
+		commands.sendTestFileChanged(updated);
+
+		expect(provider.discoveredTests.length).toBe(1);
+		expect(provider.discoveredTests[0].children.map(c => c.name)).toEqual(['TestBravo']);
+	});
+
+	it('adds a file that was created', () => {
+		commands.sendDiscoveredTests([]);
+
+		const other = Uri.file('/repo/beta_test.go');
+		commands.sendTestFileChanged(new TestNode('beta_test.go', other, [new TestNode('TestBeta', other)]));
+
+		expect(provider.discoveredTests.length).toBe(1);
+		expect(provider.discoveredTests[0].name).toBe('beta_test.go');
+	});
+
+	it('keeps the outcome of a test across a change to its file', () => {
+		commands.sendDiscoveredTests([buildSuite()]);
+		commands.sendTestResult(new TestResult(fileUri, 'TestAlpha', true, []));
+
+		const updated = new TestNode('alpha_test.go', fileUri, [new TestNode('TestAlpha', fileUri)]);
+		commands.sendTestFileChanged(updated);
+
+		expect(provider.discoveredTests[0].children[0].testResult).toBeDefined();
+		expect(provider.discoveredTests[0].children[0].testResult.isPassed).toBe(true);
+	});
+
+	it('forgets a test the file no longer declares', () => {
+		commands.sendDiscoveredTests([buildSuite()]);
+
+		const updated = new TestNode('alpha_test.go', fileUri, [new TestNode('TestBravo', fileUri)]);
+		commands.sendTestFileChanged(updated);
+
+		expect(provider.getDiscoveredTestNode(fileUri.fsPath + '__TestAlpha')).toBeUndefined();
+		expect(provider.getDiscoveredTestNode(fileUri.fsPath + '__TestBravo')).toBeDefined();
+	});
+
+	it('drops the node for a file that was removed', () => {
+		commands.sendDiscoveredTests([buildSuite()]);
+
+		commands.sendTestFileRemoved(fileUri.fsPath);
+
+		expect(provider.discoveredTests.length).toBe(0);
+		expect(provider.getDiscoveredTestNode(fileUri.fsPath + '__TestAlpha')).toBeUndefined();
+	});
+
 	it('returns the discovered nodes as the tree root', () => {
 		commands.sendDiscoveredTests([buildSuite()]);
 		return provider.getChildren().then(children => {

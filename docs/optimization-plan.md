@@ -124,9 +124,9 @@ Each phase is independently shippable and independently verifiable.
 
 | Phase | Status | Evidence |
 |---|---|---|
-| Phase 0 — Baseline and test harness | Done | `npm test` runs 115 assertions across 9 files; `npm run bench` writes `bench/results/baseline.json` |
+| Phase 0 — Baseline and test harness | Done | `npm test` runs 134 assertions across 10 files; `npm run bench` writes `bench/results/baseline.json` |
 | Phase 1 — Correctness fixes | Done | C1–C12 applied; each fix has a regression test in `src/test/` |
-| Phase 2 — Discovery performance | 2a, 2b, 2d done; 2c open | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0 |
+| Phase 2 — Discovery performance | Done | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0; a refresh over a warm cache costs 3.6 ms and a saved file reaches the tree without a manual refresh |
 | Phase 3 — Execution performance | Not started | — |
 | Phase 4 — Toolchain and delivery | Partially done | TypeScript 5, `@types/vscode` 1.85, Vitest, `tsx` landed as Phase 0 prerequisites; the rest of Phase 4 is still open |
 | Phase 5 — Native Testing API | Not started | Deferred |
@@ -172,12 +172,21 @@ extension had before Phase 2.
 | Discovery, 20 files / 400 tests (first run) | 21 ms | 4.1 ms | 5.1× faster |
 | Discovery, 20 files / 400 tests (warm) | 12 ms | 1.2 ms | 9.9× faster |
 | Discovery, 500 files / 10,000 tests | 246 ms | 15 ms | **16× faster** |
+| Discovery, 500 files, warm cache | 246 ms | **3.6 ms** | **68× faster** |
 | Child processes spawned, 500 files | 500 | **0** | — |
 | Tests found, 500 files | 10,000 | 10,000 | same |
 | `go test ./...` (20 packages, warm) | 81 ms | 80 ms | unchanged |
 
 Both paths find the same 10,000 tests in the 500-file fixture, so the speed-up
 is not bought by finding fewer of them.
+
+The **warm cache** row is Phase 2c: the second discovery over files that have
+not changed, which is what a refresh of the tree costs. It stats every file
+and reads none of them, so it is 3.5× faster than the 12.4 ms of an uncached
+refresh and 68× faster than Phase 0. On the 20-file fixture the cache is
+break-even (1.5 ms against 1.3 ms), because 20 `stat` calls cost about as much
+as 20 reads of a file that holds twenty tests. The cache earns its keep on a
+repository of any size.
 
 ---
 
@@ -257,12 +266,14 @@ Rationale for a scanner over `go list`/`go test -list`: `go test -list` requires
 
 **Done as the FS walk only.** `findTestFiles()` walks the tree with `readdir({withFileTypes: true})`, skipping `Config.SkipFolders` by name at any depth, following symlinked directories while tracking real paths so a symlink cycle cannot loop forever, and ignoring broken symlinks. A symlinked directory keeps the path under the workspace, so the file the user opens is the one the tree shows. `go list` was not used: it spawns a process, and it drops test files that a build tag excludes, which would make the tree disagree with what `go test` runs.
 
-**2c. Concurrency + skip list + cache + watcher** — **Partly done**
+**2c. Concurrency + skip list + cache + watcher** — **Done**
 
 - Bound discovery concurrency to 16 (configurable). **Done** — `Config.DiscoveryConcurrency`, applied to both the directory walk and the file scans.
 - Expand `Config.SkipFolders` (`src/config.ts:3`): `vendor, .vscode, .git, .idea, node_modules, testdata, dist, build, out, third_party, proto, generated, __pycache__, .venv, coverage`. **Done**.
-- Cache scan results by `(path, mtime, size)`; re-scan only changed files. **Open.**
-- `vscode.workspace.createFileSystemWatcher('**/*_test.go')` → incremental add/remove instead of full rediscovery. **Open.**
+- Cache scan results by `(path, mtime, size)`; re-scan only changed files. **Done** — `src/discovery/scanCache.ts` holds the declarations of each file together with the modification time and size it was read at. A file is read and parsed again only when one of those has changed, so a refresh costs one `stat` per file instead of one read. The watcher invalidates a file the moment it changes, so an edit is never hidden by a stale entry even on a file system with a coarse modification time.
+- `vscode.workspace.createFileSystemWatcher('**/*_test.go')` → incremental add/remove instead of full rediscovery. **Done** — `TestDiscovery` watches the workspace and rescans only the file that changed. The tree node for that file is replaced in place, so the rest of the tree is not rebuilt and the outcome of tests that have already run is carried over, exactly as a full refresh does.
+
+The watcher applies the same scope rules as the walk: a file outside the directory that is scanned (a folder with a `src` directory is scanned from there) or inside a skipped folder is ignored, so the tree does not gain a file the walk would not have found. A change that arrives while a discovery is running is applied once that discovery has finished, so an edit made during the first scan is not lost.
 
 **2d. Retire the dead scaffolding** — **Done**
 
@@ -270,12 +281,12 @@ Rationale for a scanner over `go list`/`go test -list`: `go test -list` requires
 - Delete `src/lib/avlTree.ts` (262 lines) once the scanner returns line/char offsets. **Done.**
 - Delete `src/lib/goOutline.ts` (the `go-outline` integration). **Done.**
 - Drop the `mkdirp` and `rimraf` dependencies. **Done.**
-- De-duplicate `getToolsGopath` / `resolveHomeDir` / `stripBOM` across `src/lib/utils.ts` and `src/lib/goPath.ts`. **Open** — the duplicate helpers are still there; only the ones that existed for `go-outline` (`makeMemoizedByteOffsetConverter`, `getFileArchive`, `getTestFunctions`, `Entry`) were removed.
+- De-duplicate `getToolsGopath` / `resolveHomeDir` / `stripBOM` across `src/lib/utils.ts` and `src/lib/goPath.ts`. **Done** — each helper is defined exactly once: `getToolsGopath` in `src/lib/utils.ts`, `resolveHomeDir` and `stripBOM` in `src/lib/goPath.ts`, which `utils.ts` imports. The duplicates were in the upstream initial commit but had already gone before this work started, so the premise of this item was stale. The helpers that did exist for `go-outline` (`makeMemoizedByteOffsetConverter`, `getFileArchive`, `getTestFunctions`, `Entry`) were removed.
 
 **Exit criteria:**
 - Discovery on the 500-file fixture: **no child processes spawned**, and wall time under the Phase 0 baseline by a measured margin (target: ≥10× faster; the baseline number goes in the plan's appendix). **Met** — 0 spawns, 246 ms → 15 ms, 16× faster.
 - `go-outline` uninstalled → discovery still works fully. **Met** — the binary is no longer used by any code path; `src/test/testDiscovery.test.ts` proves discovery works with no external tool, and `npm run bench` no longer requires `go-outline` on `PATH`.
-- Editing a `_test.go` file updates the tree within ~1s without a manual Refresh. **Open** — depends on 2c's file watcher.
+- Editing a `_test.go` file updates the tree within ~1s without a manual Refresh. **Met** — the file watcher rescans the file that changed and replaces its node in place. `src/test/testDiscovery.test.ts` covers a change, a creation and a deletion; `src/test/goTestProvider.test.ts` covers the tree update. The watcher fires when the file is written on disk, so the tree shows the saved file; an unsaved edit is still found by go-to-location, which reads the open document.
 
 **Effort:** ~4 days.
 

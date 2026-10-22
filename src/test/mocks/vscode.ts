@@ -252,8 +252,68 @@ export const __state = {
 	/**
 	 * The contents of the documents the mock hands out, keyed by path.
 	 */
-	documentTexts: new Map<string, string>()
+	documentTexts: new Map<string, string>(),
+	/**
+	 * The file watchers the code under test has created.
+	 */
+	fileWatchers: [] as MockFileSystemWatcher[]
 };
+
+/**
+ * A stand-in for a file system watcher.
+ *
+ * The real watcher reports a change to a file when it is written on disk.
+ * A test drives this one with `__fireFileWatchEvent`.
+ */
+export class MockFileSystemWatcher {
+	private readonly createEmitter = new EventEmitter<Uri>();
+	private readonly changeEmitter = new EventEmitter<Uri>();
+	private readonly deleteEmitter = new EventEmitter<Uri>();
+
+	constructor(public readonly glob: string = '') { }
+
+	get onDidCreate(): (listener: (uri: Uri) => unknown) => Disposable {
+		return this.createEmitter.event;
+	}
+	get onDidChange(): (listener: (uri: Uri) => unknown) => Disposable {
+		return this.changeEmitter.event;
+	}
+	get onDidDelete(): (listener: (uri: Uri) => unknown) => Disposable {
+		return this.deleteEmitter.event;
+	}
+
+	fireCreate(uri: Uri): void {
+		this.createEmitter.fire(uri);
+	}
+	fireChange(uri: Uri): void {
+		this.changeEmitter.fire(uri);
+	}
+	fireDelete(uri: Uri): void {
+		this.deleteEmitter.fire(uri);
+	}
+
+	dispose(): void {
+		this.createEmitter.dispose();
+		this.changeEmitter.dispose();
+		this.deleteEmitter.dispose();
+	}
+}
+
+/**
+ * Reports a change to a file to every watcher that was created.
+ */
+export function __fireFileWatchEvent(kind: 'create' | 'change' | 'delete', filePath: string): void {
+	const uri = Uri.file(filePath);
+	__state.fileWatchers.forEach(watcher => {
+		if (kind === 'create') {
+			watcher.fireCreate(uri);
+		} else if (kind === 'change') {
+			watcher.fireChange(uri);
+		} else {
+			watcher.fireDelete(uri);
+		}
+	});
+}
 
 /**
  * Resets all recorded state between tests.
@@ -269,6 +329,7 @@ export function __reset(): void {
 	__state.registeredCommands.clear();
 	__state.openedDocuments = [];
 	__state.documentTexts.clear();
+	__state.fileWatchers = [];
 	__configCalls.reset();
 }
 
@@ -311,8 +372,10 @@ export const workspace = {
 			positionAt: (offset: number) => new Position(0, offset)
 		});
 	},
-	createFileSystemWatcher(): Disposable {
-		return new Disposable();
+	createFileSystemWatcher(glob?: string): MockFileSystemWatcher {
+		const watcher = new MockFileSystemWatcher(glob);
+		__state.fileWatchers.push(watcher);
+		return watcher;
 	},
 	asRelativePath(p: string): string {
 		return p;
@@ -376,5 +439,5 @@ export const env = {
 export default {
 	SymbolKind, FileType, TreeItemCollapsibleState, TextEditorRevealType, FileChangeType,
 	Position, Range, Selection, Uri, Disposable, EventEmitter, TreeItem, SymbolInformation,
-	WorkspaceConfiguration, workspace, window, commands, env
+	WorkspaceConfiguration, MockFileSystemWatcher, workspace, window, commands, env
 };

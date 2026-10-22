@@ -2,14 +2,17 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { TestDiscovery } from '../testDiscovery';
 import { TestNode } from '../testNode';
 import { Commands } from '../commands';
-import { __state, __reset, Uri } from './mocks/vscode';
+import { __state, __reset, __fireFileWatchEvent, Uri } from './mocks/vscode';
 
 class FakeCommands {
 	discoveryStarted = 0;
 	discovered: TestNode[][] = [];
+	changed: TestNode[] = [];
+	removed: string[] = [];
 
 	sendTestDiscoveryStarted(): void {
 		this.discoveryStarted++;
@@ -18,6 +21,21 @@ class FakeCommands {
 	sendDiscoveredTests(nodes: TestNode[]): void {
 		this.discovered.push(nodes);
 	}
+
+	sendTestFileChanged(node: TestNode): void {
+		this.changed.push(node);
+	}
+
+	sendTestFileRemoved(filePath: string): void {
+		this.removed.push(filePath);
+	}
+}
+
+function fakeContext(): vscode.ExtensionContext {
+	return {
+		subscriptions: [],
+		asAbsolutePath: (relativePath: string) => relativePath
+	} as unknown as vscode.ExtensionContext;
 }
 
 let tempDirs: string[] = [];
@@ -60,7 +78,7 @@ describe('TestDiscovery.discoverAllTests', () => {
 		];
 
 		const commands = fakeCommands();
-		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 		await waitFor(() => commands.discovered.length > 0);
 
@@ -76,7 +94,7 @@ describe('TestDiscovery.discoverAllTests', () => {
 		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
 
 		const commands = fakeCommands();
-		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 		await waitFor(() => commands.discovered.length > 0);
 		expect(commands.discovered[0].length).toBe(1);
@@ -85,7 +103,7 @@ describe('TestDiscovery.discoverAllTests', () => {
 	it('sends an empty result when there are no workspace folders', () => {
 		__state.workspaceFolders = [];
 		const commands = fakeCommands();
-		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 		expect(commands.discovered.length).toBe(1);
 		expect(commands.discovered[0]).toEqual([]);
@@ -100,7 +118,7 @@ describe('TestDiscovery.discoverAllTests', () => {
 		];
 
 		const commands = fakeCommands();
-		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 		await waitFor(() => commands.discovered.length > 0);
 		expect(commands.discovered[0].map(n => n.name)).toEqual(['alpha_test.go']);
@@ -115,7 +133,7 @@ describe('TestDiscovery.discoverAllTests', () => {
 		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
 
 		const commands = fakeCommands();
-		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 		await waitFor(() => commands.discovered.length > 0);
 
@@ -132,7 +150,7 @@ describe('TestDiscovery.discoverAllTests', () => {
 		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
 
 		const commands = fakeCommands();
-		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 		await waitFor(() => commands.discovered.length > 0);
 
@@ -149,7 +167,7 @@ describe('TestDiscovery.discoverAllTests', () => {
 		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
 
 		const commands = fakeCommands();
-		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 		await waitFor(() => commands.discovered.length > 0);
 		expect(commands.discovered[0].map(n => n.name)).toEqual(['alpha_test.go']);
@@ -166,7 +184,7 @@ describe('TestDiscovery.discoverAllTests', () => {
 
 		try {
 			const commands = fakeCommands();
-			new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+			new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 			await waitFor(() => commands.discovered.length > 0);
 
@@ -191,7 +209,7 @@ describe('TestDiscovery workspace path resolution', () => {
 		__state.workspaceFolders = [{ uri, name: 'a', index: 0 }];
 
 		const commands = fakeCommands();
-		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 		await waitFor(() => commands.discovered.length > 0);
 
@@ -210,12 +228,227 @@ describe('TestDiscovery workspace path resolution', () => {
 		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
 
 		const commands = fakeCommands();
-		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
 
 		await waitFor(() => commands.discovered.length > 0);
 		expect(commands.discovered[0].map(n => n.name)).toEqual(['alpha_test.go']);
 	});
 });
+
+describe('TestDiscovery file watching', () => {
+	it('watches the workspace for Go test files', () => {
+		__state.workspaceFolders = [];
+		new TestDiscovery(fakeCommands() as unknown as Commands, fakeContext());
+
+		expect(__state.fileWatchers.length).toBe(1);
+		expect(__state.fileWatchers[0].glob).toBe('**/*_test.go');
+	});
+
+	it('reports the tests in a file that changed', async () => {
+		const folder = makeTempDir();
+		const file = writeTestFile(folder, 'alpha_test.go', 'func TestAlpha(t *testing.T) {}');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+		await waitFor(() => commands.discovered.length > 0);
+
+		writeTestFile(folder, 'alpha_test.go', 'func TestBeta(t *testing.T) {}');
+		__fireFileWatchEvent('change', file);
+
+		await waitFor(() => commands.changed.length > 0);
+		expect(commands.changed[0].name).toBe('alpha_test.go');
+		expect(commands.changed[0].children.map(c => c.name)).toEqual(['TestBeta']);
+	});
+
+	it('reports a file that was created', async () => {
+		const folder = makeTempDir();
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+		await waitFor(() => commands.discovered.length > 0);
+
+		const file = writeTestFile(folder, 'gamma_test.go', 'func TestGamma(t *testing.T) {}');
+		__fireFileWatchEvent('create', file);
+
+		await waitFor(() => commands.changed.length > 0);
+		expect(commands.changed[0].children.map(c => c.name)).toEqual(['TestGamma']);
+	});
+
+	it('removes a file that was deleted', async () => {
+		const folder = makeTempDir();
+		const file = writeTestFile(folder, 'alpha_test.go', 'func TestAlpha(t *testing.T) {}');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+		await waitFor(() => commands.discovered.length > 0);
+
+		__fireFileWatchEvent('delete', file);
+
+		await waitFor(() => commands.removed.length > 0);
+		expect(commands.removed[0]).toBe(file);
+	});
+
+	it('ignores a file outside the directory that is scanned', async () => {
+		const folder = makeTempDir();
+		const src = path.join(folder, 'src');
+		fs.mkdirSync(src);
+		const file = writeTestFile(folder, 'outside_test.go', 'func TestOutside(t *testing.T) {}');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+		await waitFor(() => commands.discovered.length > 0);
+
+		__fireFileWatchEvent('change', file);
+		await delay(50);
+
+		// The tree only holds the tests under `src`, so a file elsewhere in
+		// the workspace is not part of it.
+		expect(commands.changed.length).toBe(0);
+	});
+
+	it('ignores a file in a skipped folder', async () => {
+		const folder = makeTempDir();
+		const vendor = path.join(folder, 'vendor');
+		fs.mkdirSync(vendor);
+		const file = writeTestFile(vendor, 'vendored_test.go', 'func TestVendored(t *testing.T) {}');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+		await waitFor(() => commands.discovered.length > 0);
+
+		__fireFileWatchEvent('change', file);
+		await delay(50);
+
+		expect(commands.changed.length).toBe(0);
+	});
+
+	it('discards a change that a newer one has overtaken', async () => {
+		const folder = makeTempDir();
+		const file = writeTestFile(folder, 'alpha_test.go', 'func TestAlpha(t *testing.T) {}');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+		await waitFor(() => commands.discovered.length > 0);
+
+		// The first read is held back, so the second change overtakes it.
+		// The held-back read still sees the old contents, which is what
+		// makes the overtaken result worth discarding.
+		const realReadFile = fs.promises.readFile;
+		let firstRead = true;
+		const spy = vi.spyOn(fs.promises, 'readFile').mockImplementation(async (target: any, options: any) => {
+			const content = await realReadFile(target, options);
+			if (firstRead) {
+				firstRead = false;
+				await delay(50);
+			}
+			return content;
+		});
+
+		try {
+			__fireFileWatchEvent('change', file);
+			await delay(10);
+
+			writeTestFile(folder, 'alpha_test.go', 'func TestBravo(t *testing.T) {}');
+			__fireFileWatchEvent('change', file);
+
+			await waitFor(() => commands.changed.length > 0);
+			await delay(100);
+
+			// Only the newer change is applied, and it carries the newer
+			// contents.
+			expect(commands.changed.length).toBe(1);
+			expect(commands.changed[0].children.map(c => c.name)).toEqual(['TestBravo']);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it('does not let a superseded scan put the pre-edit contents back in the cache', async () => {
+		const folder = makeTempDir();
+		const file = writeTestFile(folder, 'alpha_test.go', 'func TestAlpha(t *testing.T) {}');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		const discovery = new TestDiscovery(commands as unknown as Commands, fakeContext());
+		discovery.discoverAllTests();
+		await waitFor(() => commands.discovered.length > 0);
+
+		// A file system with a coarse modification time: the metadata of the
+		// file never changes, so only the watcher's invalidation keeps the
+		// cache honest.
+		const realStat = fs.promises.stat;
+		const statSpy = vi.spyOn(fs.promises, 'stat').mockImplementation(async (target: any) => {
+			const stats = await realStat(target);
+			if (target === file) {
+				return { ...stats, mtimeMs: 1000 } as any;
+			}
+			return stats;
+		});
+
+		// The first read is held back, so the second change overtakes it.
+		// The held-back read still sees the old contents, which is what
+		// makes the overtaken result worth discarding.
+		const realReadFile = fs.promises.readFile;
+		let firstRead = true;
+		const readSpy = vi.spyOn(fs.promises, 'readFile').mockImplementation(async (target: any, options: any) => {
+			const content = await realReadFile(target, options);
+			if (firstRead) {
+				firstRead = false;
+				await delay(50);
+			}
+			return content;
+		});
+
+		try {
+			__fireFileWatchEvent('change', file);
+			await delay(10);
+
+			// The same length as before, so the size does not change either.
+			writeTestFile(folder, 'alpha_test.go', 'func TestBravo(t *testing.T) {}');
+			__fireFileWatchEvent('change', file);
+
+			await waitFor(() => commands.changed.length > 0);
+			await delay(100);
+
+			// A refresh reads the file again rather than trusting the cache.
+			discovery.discoverAllTests();
+			await waitFor(() => commands.discovered.length > 1);
+
+			const suite = commands.discovered[1][0];
+			expect(suite.children.map(c => c.name)).toEqual(['TestBravo']);
+		} finally {
+			readSpy.mockRestore();
+			statSpy.mockRestore();
+		}
+	});
+
+	it('applies a change that arrived while the discovery was running', async () => {
+		const folder = makeTempDir();
+		const file = writeTestFile(folder, 'alpha_test.go', 'func TestAlpha(t *testing.T) {}');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+
+		// The file is written while the first discovery is still running, so
+		// the change cannot be applied until that discovery has finished.
+		writeTestFile(folder, 'alpha_test.go', 'func TestBeta(t *testing.T) {}');
+		__fireFileWatchEvent('change', file);
+
+		await waitFor(() => commands.changed.length > 0);
+		expect(commands.changed[0].children.map(c => c.name)).toEqual(['TestBeta']);
+	});
+});
+
+function delay(ms: number): Promise<void> {
+	return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 async function waitFor(predicate: () => boolean, timeoutMs: number = 5000): Promise<void> {
 	const start = Date.now();

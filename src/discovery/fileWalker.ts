@@ -110,6 +110,27 @@ interface ResolvedLink {
 }
 
 /**
+ * Whether a path lies inside one of the skipped directories.
+ *
+ * The walk never enters a skipped directory, but a file watcher reports
+ * every test file in the workspace, including the ones in those directories,
+ * so the incremental path has to apply the same rule.
+ *
+ * @param filePath the path of the file to check.
+ * @param skipFolders the directory names to skip.
+ */
+export function isInSkippedFolder(filePath: string, skipFolders: readonly string[]): boolean {
+	if (skipFolders.length === 0) {
+		return false;
+	}
+	const skip = new Set(skipFolders);
+	return path
+		.dirname(filePath)
+		.split(path.sep)
+		.some(segment => skip.has(segment));
+}
+
+/**
  * Resolves the real path of a directory.
  *
  * @returns the real path, or null when it cannot be resolved.

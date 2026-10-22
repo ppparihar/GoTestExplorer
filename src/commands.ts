@@ -9,6 +9,8 @@ export class Commands {
     private readonly onTestRunStartedEmitter = new EventEmitter<TestNode>();
     private readonly onTestResultEmitter = new EventEmitter<TestResult>();
     private readonly onTestCompletedEmitter = new EventEmitter<void>();
+    private readonly onTestFileChangedEmitter = new EventEmitter<TestNode>();
+    private readonly onTestFileRemovedEmitter = new EventEmitter<string>();
 
     public get discoveredTest(): Event<TestNode[]> {
         return this.onTestDiscoveryFinishedEmitter.event;
@@ -40,5 +42,26 @@ export class Commands {
     }
     public sendTestCompleted() :void {
         this.onTestCompletedEmitter.fire();
+    }
+
+    /**
+     * The tests in one file changed, so the node for that file is replaced
+     * without rebuilding the rest of the tree.
+     */
+    public get testFileChanged(): Event<TestNode> {
+        return this.onTestFileChangedEmitter.event;
+    }
+    public sendTestFileChanged(testNode: TestNode) {
+        this.onTestFileChangedEmitter.fire(testNode);
+    }
+
+    /**
+     * A file that held tests is gone, so its node is dropped.
+     */
+    public get testFileRemoved(): Event<string> {
+        return this.onTestFileRemovedEmitter.event;
+    }
+    public sendTestFileRemoved(filePath: string) {
+        this.onTestFileRemovedEmitter.fire(filePath);
     }
 }

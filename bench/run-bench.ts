@@ -2,9 +2,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { generateFixture } from './fixtures/gen';
-import { runDiscoveryBench, DiscoveryResult } from './discovery-bench';
+import { runDiscoveryBench, runCachedDiscoveryBench, DiscoveryResult } from './discovery-bench';
 import { runExecBench, ExecResult } from './exec-bench';
 import { isToolAvailable } from '../src/lib/testUtil';
+import { ScanCache } from '../src/discovery/scanCache';
 
 const PACKAGES = Number(process.env['BENCH_PACKAGES'] || 20);
 const TESTS_PER_PACKAGE = Number(process.env['BENCH_TESTS_PER_PACKAGE'] || 20);
@@ -15,7 +16,12 @@ interface Baseline {
 	packages: number;
 	testsPerPackage: number;
 	filesPerPackage: number;
-	discovery: { cold: DiscoveryResult; warm: DiscoveryResult };
+	/**
+	 * `cold` and `warm` read every file. `cached` is the second run over a
+	 * warm cache, which is what a refresh costs once the extension has seen
+	 * the files.
+	 */
+	discovery: { cold: DiscoveryResult; warm: DiscoveryResult; cached: DiscoveryResult };
 	exec: { cold: ExecResult; warm: ExecResult };
 }
 
@@ -33,6 +39,13 @@ async function main(): Promise<void> {
 	// day to day. Recording both keeps the numbers comparable across phases.
 	const discoveryCold = await runDiscoveryBench(fixture.root);
 	const discoveryWarm = await runDiscoveryBench(fixture.root);
+
+	// The cached run is measured twice as well: the first fills the cache and
+	// the second is the one that only has to stat the files.
+	const cache = new ScanCache();
+	await runCachedDiscoveryBench(fixture.root, cache);
+	const discoveryCached = await runCachedDiscoveryBench(fixture.root, cache);
+
 	const execCold = await runExecBench(fixture.root);
 	const execWarm = await runExecBench(fixture.root);
 
@@ -41,7 +54,7 @@ async function main(): Promise<void> {
 		packages: fixture.packages,
 		testsPerPackage: fixture.testsPerPackage,
 		filesPerPackage: fixture.filesPerPackage,
-		discovery: { cold: discoveryCold, warm: discoveryWarm },
+		discovery: { cold: discoveryCold, warm: discoveryWarm, cached: discoveryCached },
 		exec: { cold: execCold, warm: execWarm }
 	};
 

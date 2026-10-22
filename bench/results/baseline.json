@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-22T06:53:02.046Z",
+  "timestamp": "2026-10-22T07:08:39.511Z",
   "packages": 20,
   "testsPerPackage": 20,
   "filesPerPackage": 1,
@@ -7,25 +7,31 @@
     "cold": {
       "files": 20,
       "tests": 400,
-      "durationMs": 4.112375,
+      "durationMs": 3.303167,
       "spawns": 0
     },
     "warm": {
       "files": 20,
       "tests": 400,
-      "durationMs": 1.181959,
+      "durationMs": 1.090959,
+      "spawns": 0
+    },
+    "cached": {
+      "files": 20,
+      "tests": 400,
+      "durationMs": 1.103459,
       "spawns": 0
     }
   },
   "exec": {
     "cold": {
       "packages": 20,
-      "durationMs": 181.255917,
+      "durationMs": 234.20975,
       "exitCode": 0
     },
     "warm": {
       "packages": 20,
-      "durationMs": 79.594416,
+      "durationMs": 81.816166,
       "exitCode": 0
     }
   }

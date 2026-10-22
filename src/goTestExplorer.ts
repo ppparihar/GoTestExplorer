@@ -21,7 +21,7 @@ export class GoTestExplorer {
     constructor(context: vscode.ExtensionContext) {
         this.commands = new Commands();
         this.goTestProvider = new GoTestProvider(context, this.commands);
-        const testDiscoverer = new TestDiscovery(this.commands);
+        const testDiscoverer = new TestDiscovery(this.commands, context);
         this.testQueue = new TestQueue(
             (testConfig) => runGoTest(testConfig),
             Config.RunMaxParallelTest,
