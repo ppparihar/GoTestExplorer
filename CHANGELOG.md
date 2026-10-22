@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Fixed
-- A test file that has no `Test` function, such as a file of helpers that another test runs with `t.Run`, no longer looks like a test. Clicking it used to fail with "Could not find test (no symbols matching)", and its run button ran nothing and could report a pass. It now shows as a file marked "no tests", without a run button, and a click opens the file.
+- A test file that has no `Test` function, such as a file of helpers that another test runs with `t.Run`, no longer looks like a test. Clicking it used to fail with "Could not find test (no symbols matching)", and its run button ran nothing and could report a pass. Such files are now left out of the tree. The setting `goTestExplorer.showFilesWithoutTests` lists them again, as files marked "no tests" without a run button, and a click opens the file.
 
 ## Unreleased
 

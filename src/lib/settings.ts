@@ -203,6 +203,19 @@ export function env(resource?: vscode.Uri): { [key: string]: string } {
 }
 
 /**
+ * Whether a test file that holds no test function is listed in the tree.
+ */
+export function showFilesWithoutTests(resource?: vscode.Uri): boolean {
+  const value = readSetting<boolean>(
+    'showFilesWithoutTests',
+    undefined,
+    Config.DefaultShowFilesWithoutTests,
+    resource,
+  );
+  return typeof value === 'boolean' ? value : Config.DefaultShowFilesWithoutTests;
+}
+
+/**
  * Whether the output of a run goes to a terminal.
  */
 export function runInTerminal(resource?: vscode.Uri): boolean {

@@ -4,6 +4,7 @@ import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { Config } from './config';
+import { showFilesWithoutTests } from './lib/settings';
 import { isActive, TestFilter, TestStatus, visibleChildren, visibleSuites } from './lib/testFilter';
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
@@ -42,6 +43,13 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     context.subscriptions.push(commands.testFileChanged(this.onTestFileChanged, this));
     context.subscriptions.push(commands.testFileRemoved(this.onTestFileRemoved, this));
     context.subscriptions.push({ dispose: () => this.cancelPendingOutcomes() });
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('goTestExplorer.showFilesWithoutTests')) {
+          this.refresh();
+        }
+      }),
+    );
   }
 
   private refresh(testNode?: TestNode): void {
@@ -190,7 +198,11 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
    * The files that are shown.
    */
   get visibleTests(): TestNode[] {
-    return visibleSuites(this._discoveredTests, this.currentFilter);
+    // A file with no test function is left out, unless the user asked to see it.
+    const listed = showFilesWithoutTests()
+      ? this._discoveredTests
+      : this._discoveredTests.filter((suite) => !suite.isEmptyFile);
+    return visibleSuites(listed, this.currentFilter);
   }
 
   /**
