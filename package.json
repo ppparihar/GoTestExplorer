@@ -132,6 +132,16 @@
         "menus": {
             "view/title": [
                 {
+                    "command": "goTestExplorer.showCoverage",
+                    "when": "view == goTestExplorer && !goTestExplorer.coverageEnabled",
+                    "group": "navigation@6"
+                },
+                {
+                    "command": "goTestExplorer.hideCoverage",
+                    "when": "view == goTestExplorer && goTestExplorer.coverageEnabled",
+                    "group": "navigation@6"
+                },
+                {
                     "command": "goTestExplorer.collapseAll",
                     "when": "view == goTestExplorer && goTestExplorer.allExpanded",
                     "group": "navigation@5"
@@ -183,6 +193,20 @@
             ]
         },
         "commands": [
+            {
+                "command": "goTestExplorer.showCoverage",
+                "title": "Show Code Coverage",
+                "icon": "$(shield)"
+            },
+            {
+                "command": "goTestExplorer.showCoverageReport",
+                "title": "Show Code Coverage by File"
+            },
+            {
+                "command": "goTestExplorer.hideCoverage",
+                "title": "Hide Code Coverage",
+                "icon": "$(eye-closed)"
+            },
             {
                 "command": "goTestExplorer.collapseAll",
                 "title": "Collapse All",

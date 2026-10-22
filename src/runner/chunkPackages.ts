@@ -1,5 +1,6 @@
 import { PackageResult } from '../exec/goTestJsonParser';
 import { RawTestResult } from '../rawTestResult';
+import { CoverProfile, mergeCoverProfiles } from '../lib/coverageProfile';
 
 /**
  * How a list of packages is split into runs.
@@ -89,8 +90,12 @@ export function mergeResults(results: readonly RawTestResult[]): RawTestResult {
   const failedTests: string[] = [];
   let isPassed = true;
   let err: Error | undefined;
+  const profiles: CoverProfile[] = [];
 
   results.forEach((result) => {
+    if (result.coverage) {
+      profiles.push(result.coverage);
+    }
     isPassed = isPassed && result.isPassed;
     err = err ?? result.err;
     result.output.forEach((line) => output.push(line));
@@ -98,5 +103,12 @@ export function mergeResults(results: readonly RawTestResult[]): RawTestResult {
     result.packages.forEach((value, key) => packages.set(key, value));
   });
 
-  return new RawTestResult(isPassed, output, failedTests, err, packages);
+  return new RawTestResult(
+    isPassed,
+    output,
+    failedTests,
+    err,
+    packages,
+    profiles.length > 0 ? mergeCoverProfiles(profiles) : undefined,
+  );
 }

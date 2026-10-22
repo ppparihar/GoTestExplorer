@@ -50,6 +50,18 @@ export enum TreeItemCollapsibleState {
   Expanded = 2,
 }
 
+export enum OverviewRulerLane {
+  Left = 1,
+  Center = 2,
+  Right = 4,
+  Full = 7,
+}
+
+export enum StatusBarAlignment {
+  Left = 1,
+  Right = 2,
+}
+
 export enum TextEditorRevealType {
   Default = 0,
   InCenter = 1,
@@ -398,6 +410,8 @@ export class CancellationTokenSource {
  */
 export interface MockTextEditor {
   document: { uri: Uri };
+  /** The ranges set for each decoration type, keyed by the type. */
+  setDecorations?(type: unknown, ranges: Range[]): void;
   selection: Selection;
   revealRange(range: Range, type?: TextEditorRevealType): void;
 }
@@ -527,6 +541,14 @@ export class MockQuickPick {
 
 export const __state = {
   quickPicks: [] as MockQuickPick[],
+  saveListeners: [] as Array<(document: { uri: Uri }) => void>,
+  shownDocuments: [] as unknown[],
+  /** Chooses the item a `showQuickPick` call returns. */
+  quickPickAnswer: undefined as undefined | ((items: unknown[]) => unknown),
+  /** The editors that are visible. */
+  visibleTextEditors: [] as MockTextEditor[],
+  /** The status bar items the code under test has created. */
+  statusItems: [] as Array<{ text: string; visible: boolean }>,
   revealed: [] as Array<{ node: unknown; options: unknown }>,
   workspaceFolders: undefined as WorkspaceFolder[] | undefined,
   rootPath: undefined as string | undefined,
@@ -634,6 +656,11 @@ export function __reset(): void {
   __state.documentTexts.clear();
   __state.fileWatchers = [];
   __state.quickPicks = [];
+  __state.saveListeners = [];
+  __state.shownDocuments = [];
+  __state.quickPickAnswer = undefined;
+  __state.visibleTextEditors = [];
+  __state.statusItems = [];
   __state.revealed = [];
   __configCalls.reset();
 }
@@ -681,6 +708,10 @@ export const workspace = {
       fileName: uri.fsPath,
       positionAt: (offset: number) => new Position(0, offset),
     });
+  },
+  onDidSaveTextDocument(listener: (document: { uri: Uri }) => void): Disposable {
+    __state.saveListeners.push(listener);
+    return new Disposable();
   },
   onDidChangeConfiguration(
     listener: (event: { affectsConfiguration(section: string): boolean }) => void,
@@ -743,6 +774,7 @@ export const window = {
     _options: unknown,
   ): {
     message?: string;
+    description?: string;
     reveal(node: unknown, options?: unknown): Promise<void>;
     dispose(): void;
   } {
@@ -754,6 +786,48 @@ export const window = {
       dispose(): void {},
     };
   },
+  get visibleTextEditors(): MockTextEditor[] {
+    return __state.visibleTextEditors;
+  },
+  onDidChangeVisibleTextEditors(): Disposable {
+    return new Disposable();
+  },
+  createTextEditorDecorationType(options: { backgroundColor?: string }): {
+    key: string;
+    dispose(): void;
+  } {
+    return { key: options.backgroundColor ?? '', dispose(): void {} };
+  },
+  createStatusBarItem(): {
+    text: string;
+    tooltip: string;
+    show(): void;
+    hide(): void;
+    dispose(): void;
+  } {
+    const record = { text: '', visible: false };
+    __state.statusItems.push(record);
+    return {
+      get text() {
+        return record.text;
+      },
+      set text(value: string) {
+        record.text = value;
+      },
+      tooltip: '',
+      show(): void {
+        record.visible = true;
+      },
+      hide(): void {
+        record.visible = false;
+      },
+      dispose(): void {},
+    };
+  },
+  showQuickPick<T>(items: T[], _options?: unknown): Promise<T | undefined> {
+    const answer = __state.quickPickAnswer;
+    return Promise.resolve(answer ? (answer(items) as T | undefined) : undefined);
+  },
   createQuickPick(): MockQuickPick {
     const box = new MockQuickPick();
     __state.quickPicks.push(box);
@@ -762,7 +836,8 @@ export const window = {
   registerTreeDataProvider(_id: string, _provider: unknown): Disposable {
     return new Disposable();
   },
-  showTextDocument(): Promise<unknown> {
+  showTextDocument(document: unknown): Promise<unknown> {
+    __state.shownDocuments.push(document);
     return Promise.resolve({});
   },
 };
@@ -789,6 +864,8 @@ export default {
   SymbolKind,
   FileType,
   TreeItemCollapsibleState,
+  OverviewRulerLane,
+  StatusBarAlignment,
   TextEditorRevealType,
   FileChangeType,
   Position,

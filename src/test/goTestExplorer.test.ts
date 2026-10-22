@@ -363,6 +363,217 @@ describe('GoTestExplorer runs a whole module', () => {
     expect(explorer.goTestProvider.isFiltered).toBe(false);
   });
 
+  describe('coverage', () => {
+    const profile = () =>
+      new Map([
+        [
+          'example.com/mod/pkg/a/a.go',
+          [
+            { startLine: 1, startCol: 1, endLine: 2, endCol: 2, statements: 1, count: 1 },
+            { startLine: 4, startCol: 1, endLine: 5, endCol: 2, statements: 1, count: 0 },
+          ],
+        ],
+      ]);
+
+    function openEditor(fsPath: string) {
+      const marks: Array<{ key: string; lines: number[] }> = [];
+      __state.visibleTextEditors.push({
+        document: { uri: Uri.file(fsPath) },
+        selection: undefined as never,
+        revealRange: () => {},
+        setDecorations: (type: unknown, ranges: Array<{ start: { line: number } }>) =>
+          marks.push({
+            key: (type as { key: string }).key,
+            lines: ranges.map((r) => r.start.line),
+          }),
+      });
+      return marks;
+    }
+
+    it('measures nothing until it is turned on, then marks the lines of a run', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      const marks = openEditor(path.join(moduleDir, 'pkg', 'a', 'a.go'));
+
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => runGoTest.mock.calls.length > 0);
+      expect(runGoTest.mock.calls[0][0].coverage).toBe(false);
+
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => runGoTest.mock.calls.length > 1);
+      expect(runGoTest.mock.calls[1][0].coverage).toBe(true);
+
+      await waitFor(() => marks.length > 0);
+      expect(marks.slice(-2).map((m) => m.lines)).toEqual([
+        [0, 1],
+        [3, 4],
+      ]);
+      expect(__state.statusItems[0].text).toContain('50.0%');
+      expect(__state.statusItems[0].visible).toBe(true);
+    });
+
+    it('tells the user what to do when coverage is turned on', async () => {
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+
+      expect(__state.messages.info.join('\n')).toContain('Run your tests');
+      expect(__state.statusItems[0].text).toContain('run tests');
+      expect(__state.statusItems[0].visible).toBe(true);
+    });
+
+    it('shows the coverage in the header of the view, where it stays in place', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      const header = () => (explorer as unknown as { treeView: { description?: string } }).treeView;
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      expect(header().description).toBe('Coverage: run tests');
+
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => completed.length > 0);
+      // One test ran, not every test, so the figure says it is partial.
+      expect(header().description).toBe('Coverage 50.0% (partial)');
+
+      // Run All gives the figure of the project.
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+      await waitFor(() => header().description === 'Coverage 50.0%');
+
+      // A saved file is forgotten, so the figure is partial again.
+      __state.saveListeners.forEach((listener) =>
+        listener({ uri: Uri.file(path.join(moduleDir, 'pkg', 'a', 'a.go')) }),
+      );
+      expect(header().description).toBe('Coverage: run tests');
+      // The tests are the only rows of the tree, so the header does not scroll away.
+      expect(await explorer.goTestProvider.getChildren()).toEqual([a]);
+
+      await vscode.commands.executeCommand('goTestExplorer.hideCoverage');
+      expect(header().description).toBeUndefined();
+    });
+
+    it('shows a spinner by the coverage while tests are running', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      const header = () => (explorer as unknown as { treeView: { description?: string } }).treeView;
+      const spinner = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] /;
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      expect(header().description).not.toMatch(spinner);
+
+      let finish: (result: RawTestResult) => void = () => {};
+      runGoTest.mockImplementation(
+        () => new Promise<RawTestResult>((resolve) => (finish = resolve)),
+      );
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+
+      // While the run is going the header spins, and so does the status bar.
+      expect(header().description).toMatch(spinner);
+      expect(__state.statusItems[0].text).toContain('sync~spin');
+      const first = header().description;
+      await waitFor(() => header().description !== first);
+      expect(header().description).toMatch(spinner);
+
+      finish(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await waitFor(() => completed.length > 0);
+
+      // When it has finished the figure is shown without the spinner.
+      expect(header().description).toBe('Coverage 50.0% (partial)');
+      expect(__state.statusItems[0].text).not.toContain('sync~spin');
+    });
+
+    it('shows the coverage of a package while Run All is still going', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestBeta']);
+      explorer.commands.sendDiscoveredTests([a, b]);
+      const header = () => (explorer as unknown as { treeView: { description?: string } }).treeView;
+      const row = (suite: TestNode) => explorer.goTestProvider.getTreeItem(suite).description;
+      const block = (count: number) => [
+        { startLine: 1, startCol: 1, endLine: 1, endCol: 9, statements: 1, count },
+      ];
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+
+      let finish: (result: RawTestResult) => void = () => {};
+      runGoTest.mockImplementation(
+        (config) =>
+          new Promise<RawTestResult>((resolve) => {
+            finish = resolve;
+            // The first package finishes, and its test with it.
+            config.onTestFinished({
+              package: 'example.com/mod/pkg/a',
+              name: 'TestAlpha',
+              passed: true,
+              elapsed: 0,
+              output: [],
+            });
+            config.onCoverage(new Map([['example.com/mod/pkg/a/a.go', block(1)]]));
+          }),
+      );
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+
+      // The file of the first package shows its coverage, and the file of the
+      // package that is still running shows none. The figure is not complete.
+      await waitFor(() => row(a) === '100.0%');
+      expect(row(b)).toBeUndefined();
+      expect(header().description).toContain('Coverage 100.0% (partial)');
+
+      // The second package finishes, then the run ends.
+      finish(
+        new RawTestResult(
+          true,
+          [],
+          [],
+          undefined,
+          new Map(),
+          new Map([
+            ['example.com/mod/pkg/a/a.go', block(1)],
+            ['example.com/mod/pkg/b/b.go', block(0)],
+          ]),
+        ),
+      );
+      await waitFor(() => header().description === 'Coverage 50.0%');
+    });
+
+    it('lists the covered files, the least covered first, and opens the one picked', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => completed.length > 0);
+
+      let offered: Array<{ label: string; description: string }> = [];
+      __state.quickPickAnswer = (items) => {
+        offered = items as typeof offered;
+        return items[0];
+      };
+      await vscode.commands.executeCommand('goTestExplorer.showCoverageReport');
+
+      expect(offered.length).toBe(1);
+      expect(offered[0].label).toContain('50.0%');
+      expect(offered[0].description).toBe('1 of 2 statements ran');
+      expect(__state.shownDocuments.length).toBe(1);
+    });
+
+    it('says so when there is no coverage to list', async () => {
+      await vscode.commands.executeCommand('goTestExplorer.showCoverageReport');
+      expect(__state.messages.info.join('\n')).toContain('no coverage yet');
+    });
+
+    it('removes the marks when it is turned off', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      const marks = openEditor(path.join(moduleDir, 'pkg', 'a', 'a.go'));
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => marks.length > 0);
+
+      await vscode.commands.executeCommand('goTestExplorer.hideCoverage');
+
+      expect(marks.slice(-2).map((m) => m.lines)).toEqual([[], []]);
+      expect(__state.statusItems[0].visible).toBe(false);
+    });
+  });
+
   it('expands every file that is shown', async () => {
     const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
     const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestBeta']);

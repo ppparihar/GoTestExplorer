@@ -3,7 +3,10 @@ import * as path from 'path';
 import { GoTestProvider } from './goTestProvider';
 import { runGoTest, TestConfig, TestPackage, cancelRunningTests } from './lib/testUtil';
 import { TestNode } from './testNode';
+import { CoverageDecorations } from './coverageDecorations';
+import { CoverBlock, CoverProfile } from './lib/coverageProfile';
 import { TestStatus } from './lib/testFilter';
+import { Config } from './config';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { RawTestResult } from './rawTestResult';
@@ -34,6 +37,14 @@ interface ModuleGroup {
   suites: TestNode[];
 }
 
+/**
+ * The frames of the spinner that shows in the header of the view while tests
+ * are running. The header is text, which cannot hold the animated icon of the
+ * tree, so the frames are drawn one after the other.
+ */
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const SPINNER_INTERVAL = 100;
+
 const STATUS_LABELS: Record<TestStatus, string> = {
   failed: 'failed',
   passed: 'passed',
@@ -43,6 +54,19 @@ const STATUS_LABELS: Record<TestStatus, string> = {
 export class GoTestExplorer {
   goTestProvider: GoTestProvider;
   private readonly treeView: vscode.TreeView<TestNode>;
+  private readonly coverage: CoverageDecorations;
+  /**
+   * Whether the runs measure what the tests cover.
+   */
+  private coverageEnabled = false;
+  private spinnerTimer: ReturnType<typeof setInterval> | undefined;
+  private spinnerFrame = 0;
+  /**
+   * The coverage of finished packages that is waiting to be drawn.
+   */
+  private readonly pendingCoverage = new Map<string, CoverBlock[]>();
+  private coverageTimer: ReturnType<typeof setTimeout> | undefined;
+  private filterMessage: string | undefined;
 
   readonly commands: Commands;
   private readonly testQueue: TestQueue;
@@ -66,13 +90,30 @@ export class GoTestExplorer {
       // The limit is read for every run, so a change to the setting
       // takes effect without reloading the window.
       () => maxParallelTests(),
-      (testConfig, result) => this.onRunCompleted(testConfig, result),
-      (testConfig, error) => this.onRunFailed(testConfig, error),
+      (testConfig, result) => {
+        try {
+          this.onRunCompleted(testConfig, result);
+        } finally {
+          this.updateCoverageBusy();
+        }
+      },
+      (testConfig, error) => {
+        try {
+          this.onRunFailed(testConfig, error);
+        } finally {
+          this.updateCoverageBusy();
+        }
+      },
     );
     this.treeView = vscode.window.createTreeView('goTestExplorer', {
       treeDataProvider: this.goTestProvider,
     });
     context.subscriptions.push(this.treeView);
+    this.goTestProvider.fileCoverage = (suite) => this.coverageOfTestFile(suite);
+    this.coverage = new CoverageDecorations();
+    // The tree follows the coverage, whatever changed it: a run, or a save.
+    this.coverage.onDidChange(() => this.showCoverageSummary());
+    context.subscriptions.push(this.coverage);
 
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.runTest', this.onRunSingleTest.bind(this)),
@@ -85,6 +126,22 @@ export class GoTestExplorer {
         testDiscoverer.discoverAllTests();
       }),
     );
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        'goTestExplorer.showCoverage',
+        this.onShowCoverage.bind(this),
+      ),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        'goTestExplorer.showCoverageReport',
+        this.onShowCoverageReport.bind(this),
+      ),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.hideCoverage', () => this.setCoverage(false)),
+    );
+    this.setCoverage(false);
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.expandAll', this.onExpandAll.bind(this)),
     );
@@ -106,6 +163,7 @@ export class GoTestExplorer {
       // that are running are killed.
       this.cancellations++;
       this.testQueue.cancel();
+      this.updateCoverageBusy();
       const stopped = cancelRunningTests();
       if (stopped === 0) {
         vscode.window.showInformationMessage('No test run is in progress.');
@@ -134,6 +192,227 @@ export class GoTestExplorer {
     );
     testDiscoverer.discoverAllTests();
   }
+  /**
+   * Turns the measuring of coverage on or off.
+   *
+   * While it is on, every run measures what the tests cover, and the lines
+   * are marked in the editors when the run ends. Turning it off removes the
+   * marks.
+   */
+  private setCoverage(enabled: boolean) {
+    this.coverageEnabled = enabled;
+    if (!enabled) {
+      this.coverage.clear();
+    }
+    this.coverage.setEnabled(enabled);
+    this.updateMessage();
+    this.updateCoverageBusy();
+    this.showCoverageSummary();
+    vscode.commands.executeCommand('setContext', 'goTestExplorer.coverageEnabled', enabled);
+  }
+
+  /**
+   * Shows what the tests covered in the header of the view, which stays in
+   * place while the list of tests is scrolled.
+   */
+  private showCoverageSummary() {
+    this.showCoverageHeader();
+    // The rows of the files show their own coverage, so they are drawn again.
+    this.goTestProvider.fileCoverage = (suite) => this.coverageOfTestFile(suite);
+  }
+
+  private showCoverageHeader() {
+    const percent = this.coverage.percent;
+    // The spinner tells that the figure is about to change.
+    const spinner = this.spinnerTimer ? SPINNER_FRAMES[this.spinnerFrame] + ' ' : '';
+    if (!this.coverageEnabled) {
+      this.treeView.description = undefined;
+    } else if (percent === undefined) {
+      this.treeView.description = `${spinner}Coverage: ${spinner ? 'running tests' : 'run tests'}`;
+    } else {
+      // Only a run of everything gives the figure of the project. Until then
+      // it is the figure of the files that were run, and it says so.
+      this.treeView.description = `${spinner}Coverage ${percent.toFixed(1)}%${this.coverage.complete ? '' : ' (partial)'}`;
+    }
+  }
+
+  /**
+   * Starts or stops the spinner of the coverage, by whether tests are running.
+   */
+  private updateCoverageBusy() {
+    const busy = this.coverageEnabled && this.testQueue.running + this.testQueue.pending > 0;
+    if (busy && !this.spinnerTimer) {
+      this.spinnerTimer = setInterval(() => {
+        this.spinnerFrame = (this.spinnerFrame + 1) % SPINNER_FRAMES.length;
+        this.showCoverageHeader();
+      }, SPINNER_INTERVAL);
+    } else if (!busy && this.spinnerTimer) {
+      clearInterval(this.spinnerTimer);
+      this.spinnerTimer = undefined;
+    }
+    this.coverage.setBusy(busy);
+    this.showCoverageHeader();
+  }
+
+  /**
+   * What the tests covered for a test file, to be shown beside it.
+   *
+   * Nothing is shown for a file whose tests have not run: coverage that other
+   * tests produced would read as if it were the result of these.
+   *
+   * The coverage of a test file is the coverage of the file it tests, by the
+   * naming of Go (`a_test.go` tests `a.go`). A test file without such a file
+   * shows the coverage of its package.
+   */
+  private coverageOfTestFile(suite: TestNode): string | undefined {
+    if (!this.coverageEnabled || !suite.children.some((test) => test.testResult)) {
+      return undefined;
+    }
+    const testFile = suite.uri.fsPath;
+    const own = this.coverage.percentOfFile(testFile.replace(/_test\.go$/, '.go'));
+    if (own !== undefined) {
+      return `${own.toFixed(1)}%`;
+    }
+    const wholePackage = this.coverage.percentOfDirectory(path.dirname(testFile));
+    return wholePackage === undefined ? undefined : `package ${wholePackage.toFixed(1)}%`;
+  }
+
+  /**
+   * Turns coverage on, and says what happens next: coverage is measured by the
+   * runs that start from now on, so the user is offered a run at once.
+   */
+  private async onShowCoverage() {
+    this.setCoverage(true);
+    const runAll = 'Run All Tests';
+    const choice = await vscode.window.showInformationMessage(
+      'Code coverage is on. Run your tests from this view to see which lines they ran (green) and which they did not (red).',
+      runAll,
+    );
+    if (choice === runAll) {
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+    }
+  }
+
+  /**
+   * Lists the files that were covered, the least covered first, and opens the
+   * one that is picked.
+   */
+  private async onShowCoverageReport() {
+    const report = this.coverage.report();
+    if (report.length === 0) {
+      vscode.window.showInformationMessage(
+        'There is no coverage yet. Run tests from the Go Test Explorer with coverage on.',
+      );
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      report.map((entry) => ({
+        label: `${entry.percent.toFixed(1)}%  ${vscode.workspace.asRelativePath(entry.file)}`,
+        description: `${entry.ran} of ${entry.total} statements ran`,
+        file: entry.file,
+      })),
+      { title: 'Code coverage by file', placeHolder: 'Pick a file to open it' },
+    );
+    if (picked) {
+      await vscode.window.showTextDocument(vscode.Uri.file(picked.file));
+    }
+  }
+
+  /**
+   * Marks the lines a finished run covered.
+   *
+   * The profile names a file by its import path, so the module of the run
+   * turns that name into the path of the file.
+   */
+  private showCoverage(testConfig: TestConfig, profile: CoverProfile | undefined) {
+    if (!profile || !this.coverageEnabled) {
+      return;
+    }
+    // The end of the run has the whole profile, so what was waiting to be
+    // drawn is not needed any more.
+    this.cancelPendingCoverage();
+    const files = this.filesOfProfile(testConfig, profile);
+    const wholeModule = !!testConfig.packages && testConfig.packages.length > 0;
+    this.coverage.update(this.scopeOfRun(testConfig, files), wholeModule ? 'replace' : 'add');
+  }
+
+  /**
+   * The files of a profile, by their path. The profile names a file by its
+   * import path, so the module of the run turns that name into the path.
+   */
+  private filesOfProfile(testConfig: TestConfig, profile: CoverProfile) {
+    const files = new Map<string, CoverBlock[]>();
+    const module = findGoModule(testConfig.dir);
+    if (!module) {
+      return files;
+    }
+    const prefix = module.path + '/';
+    profile.forEach((blocks, name) => {
+      if (name.startsWith(prefix)) {
+        files.set(path.join(module.root, ...name.slice(prefix.length).split('/')), blocks);
+      }
+    });
+    return files;
+  }
+
+  /**
+   * Shows the coverage of the packages of a run of a whole module as each of
+   * them finishes, instead of when the last of them has.
+   *
+   * The packages often finish within moments of each other, so what arrives is
+   * drawn together once in a short while, not once per package.
+   */
+  private streamCoverage(testConfig: TestConfig, profile: CoverProfile) {
+    if (!this.coverageEnabled) {
+      return;
+    }
+    this.filesOfProfile(testConfig, profile).forEach((blocks, file) =>
+      this.pendingCoverage.set(file, blocks),
+    );
+    if (this.coverageTimer === undefined) {
+      this.coverageTimer = setTimeout(() => {
+        this.coverageTimer = undefined;
+        const files = new Map(this.pendingCoverage);
+        this.pendingCoverage.clear();
+        this.coverage.update(files, 'stream');
+      }, Config.OutcomeRedrawDelay);
+    }
+  }
+
+  private cancelPendingCoverage() {
+    if (this.coverageTimer !== undefined) {
+      clearTimeout(this.coverageTimer);
+      this.coverageTimer = undefined;
+    }
+    this.pendingCoverage.clear();
+  }
+
+  /**
+   * The files whose coverage a run replaces.
+   *
+   * The tool reports every file of a package, and a run of one test file only
+   * runs some of the package: applying all of it would overwrite the coverage
+   * the other files had from an earlier run with the mostly empty coverage of
+   * this one. A run of one test file therefore replaces the coverage of the
+   * file it tests (`a_test.go` tests `a.go`), or of its package when there is
+   * no such file. A run of a whole module replaces everything it covered.
+   */
+  private scopeOfRun(
+    testConfig: TestConfig,
+    files: Map<string, CoverBlock[]>,
+  ): Map<string, CoverBlock[]> {
+    if (testConfig.packages && testConfig.packages.length > 0) {
+      return files;
+    }
+    const tested = testConfig.testUri.fsPath.replace(/_test\.go$/, '.go');
+    const own = files.get(tested);
+    if (own) {
+      return new Map([[tested, own]]);
+    }
+    const dir = path.dirname(testConfig.testUri.fsPath);
+    return new Map(Array.from(files).filter(([file]) => path.dirname(file) === dir));
+  }
+
   /**
    * Expands every file that is shown.
    *
@@ -216,6 +495,19 @@ export class GoTestExplorer {
   }
 
   /**
+   * Shows what the filter and the coverage are doing above the tests, so that
+   * the state of the view can be read without guessing from its buttons.
+   */
+  private updateMessage() {
+    const lines = [this.filterMessage];
+    if (this.coverageEnabled) {
+      lines.push('Coverage is on. Green lines ran, red lines did not.');
+    }
+    const text = lines.filter(Boolean).join('\n');
+    this.treeView.message = text || undefined;
+  }
+
+  /**
    * Tells the view, and the buttons of its title, what the tree is narrowed to.
    */
   private showFilter() {
@@ -227,9 +519,10 @@ export class GoTestExplorer {
     if (provider.statuses.size > 0) {
       parts.push(Array.from(provider.statuses, (status) => STATUS_LABELS[status]).join(' or '));
     }
-    this.treeView.message = provider.isFiltered
+    this.filterMessage = provider.isFiltered
       ? `Filter: ${parts.join(', ')}. Run All runs only the matching tests.`
       : undefined;
+    this.updateMessage();
     vscode.commands.executeCommand(
       'setContext',
       'goTestExplorer.filterActive',
@@ -334,6 +627,8 @@ export class GoTestExplorer {
       testUri: group.suites[0].uri,
       testName: group.suites[0].name,
       packages: group.packages,
+      coverage: this.coverageEnabled,
+      onCoverage: (profile) => this.streamCoverage(testConfig, profile),
     };
     this.enqueueTest(testConfig);
   }
@@ -348,6 +643,7 @@ export class GoTestExplorer {
       functions: tests,
       testUri: testNode.uri,
       testName: path.basename(testNode.uri.fsPath),
+      coverage: this.coverageEnabled,
     };
     return testConfig;
   }
@@ -395,6 +691,7 @@ export class GoTestExplorer {
   private enqueueTest(testConfig: TestConfig) {
     this.watchTests(testConfig);
     this.testQueue.enqueue(testConfig);
+    this.updateCoverageBusy();
   }
 
   /**
@@ -450,6 +747,7 @@ export class GoTestExplorer {
    * requested and report the suite-level result.
    */
   private onRunCompleted(testConfig: TestConfig, result: RawTestResult) {
+    this.showCoverage(testConfig, result.coverage);
     if (testConfig.packages && testConfig.packages.length > 0) {
       this.onModuleRunCompleted(testConfig, result);
       return;

@@ -473,3 +473,101 @@ function testBinaryRunning(): boolean {
     return false;
   }
 }
+
+describe.skipIf(!hasGo)('runGoTest measures coverage', () => {
+  const COVERED = `package covpkg
+
+func Covered() int { return 1 }
+
+func Uncovered() int {
+	return 2
+}
+`;
+  const COVERED_TEST = `package covpkg
+
+import "testing"
+
+func TestCovered(t *testing.T) { Covered() }
+`;
+
+  async function run(coverage: boolean) {
+    const dir = path.join(fixture, 'covpkg');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'cov.go'), COVERED);
+    const file = path.join(dir, 'cov_test.go');
+    fs.writeFileSync(file, COVERED_TEST);
+    return runGoTest({
+      dir,
+      settings: { buildTags: '', testFlags: [], timeout: '60s', envFile: '', env: {} },
+      flags: [],
+      functions: ['TestCovered'],
+      testUri: Uri.file(file),
+      testName: 'cov_test.go',
+      coverage,
+    });
+  }
+
+  it('returns what the tests ran and what they did not', async () => {
+    const result = await run(true);
+
+    expect(result.isPassed).toBe(true);
+    const blocks = result.coverage!.get('gotestexplorerfixture/covpkg/cov.go')!;
+    expect(blocks.some((b) => b.count > 0)).toBe(true);
+    expect(blocks.some((b) => b.count === 0)).toBe(true);
+  });
+
+  it('measures nothing unless it is asked to', async () => {
+    const result = await run(false);
+    expect(result.coverage).toBeUndefined();
+  });
+});
+
+describe.skipIf(!hasGo)('a run of several packages that measures coverage', () => {
+  it('reports the coverage of a package as soon as it has finished', async () => {
+    const write = (dir: string, name: string, body: string) => {
+      fs.mkdirSync(path.join(fixture, dir), { recursive: true });
+      fs.writeFileSync(path.join(fixture, dir, name), body);
+    };
+    write('streamfast', 'f.go', 'package streamfast\n\nfunc F() int { return 1 }\n');
+    write(
+      'streamfast',
+      'f_test.go',
+      'package streamfast\n\nimport "testing"\n\nfunc TestF(t *testing.T) { F() }\n',
+    );
+    write('streamslow', 's.go', 'package streamslow\n\nfunc S() int { return 1 }\n');
+    write(
+      'streamslow',
+      's_test.go',
+      'package streamslow\n\nimport (\n\t"testing"\n\t"time"\n)\n\n' +
+        'func TestS(t *testing.T) { S(); time.Sleep(3 * time.Second) }\n',
+    );
+
+    const seen: Array<{ files: string[]; at: number }> = [];
+    const started = Date.now();
+    const result = await runGoTest({
+      dir: fixture,
+      settings: { buildTags: '', testFlags: [], timeout: '60s', envFile: '', env: {} },
+      flags: [],
+      functions: [],
+      testUri: Uri.file(path.join(fixture, 'streamfast', 'f_test.go')),
+      testName: 'f_test.go',
+      coverage: true,
+      packages: ['streamfast', 'streamslow'].map((name) => ({
+        importPath: `gotestexplorerfixture/${name}`,
+        path: name,
+        files: [] as { uri: Uri; name: string; functions: string[] }[],
+      })),
+      onCoverage: (profile) => seen.push({ files: Array.from(profile.keys()), at: Date.now() }),
+    });
+    const finished = Date.now();
+
+    // The fast package is reported well before the slow one ends the run.
+    const fast = seen.find((entry) => entry.files.some((f) => f.endsWith('streamfast/f.go')));
+    expect(fast).toBeDefined();
+    expect(finished - fast!.at).toBeGreaterThan(1500);
+    expect(started).toBeLessThan(fast!.at);
+    // The slow package is reported too, and the whole profile is in the result.
+    expect(seen.some((entry) => entry.files.some((f) => f.endsWith('streamslow/s.go')))).toBe(true);
+    expect(result.coverage!.size).toBe(2);
+  });
+});

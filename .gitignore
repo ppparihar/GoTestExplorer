@@ -5,3 +5,4 @@ node_modules
 bench/results/run-*.json
 dist
 .claude/autoharness/
+.claude/skills/

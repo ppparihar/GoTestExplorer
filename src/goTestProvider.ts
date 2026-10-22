@@ -18,6 +18,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private _discoveredTests: TestNode[] = [];
   private _discovering: boolean;
   private _filter = '';
+  private _fileCoverage: (suite: TestNode) => string | undefined = () => undefined;
   private _statuses: ReadonlySet<TestStatus> = new Set();
   /**
    * The nodes whose result changed since the tree was last redrawn.
@@ -96,6 +97,16 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     nodes.forEach((node) => this.refresh(node));
   }
 
+  /**
+   * Tells what the tests covered for a test file, as the text shown beside it,
+   * or undefined when there is nothing to show. It is asked each time the row
+   * is drawn, so the row follows the results of the file.
+   */
+  set fileCoverage(coverageOf: (suite: TestNode) => string | undefined) {
+    this._fileCoverage = coverageOf;
+    this.refresh();
+  }
+
   getTreeItem(testNode: TestNode): vscode.TreeItem {
     const treeItem = new vscode.TreeItem(
       testNode.name,
@@ -106,6 +117,10 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
     if (testNode.isEmptyFile && !this._discovering) {
       return this.emptyFileItem(testNode, treeItem);
+    }
+
+    if (testNode.isTestSuite) {
+      treeItem.description = this._fileCoverage(testNode);
     }
 
     treeItem.contextValue = this._discovering

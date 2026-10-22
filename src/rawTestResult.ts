@@ -1,4 +1,5 @@
 import { PackageResult } from './exec/goTestJsonParser';
+import { CoverProfile } from './lib/coverageProfile';
 
 /**
  * The outcome of a run.
@@ -21,5 +22,9 @@ export class RawTestResult {
      * The result of every package of the run, keyed by its import path.
      */
     public packages: ReadonlyMap<string, PackageResult> = new Map<string, PackageResult>(),
+    /**
+     * What the run covered, when it was asked to measure that.
+     */
+    public coverage?: CoverProfile,
   ) {}
 }

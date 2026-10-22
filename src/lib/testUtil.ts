@@ -2,6 +2,7 @@ import * as cp from 'child_process';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import {
   getBinPathWithPreferredGopath,
   getBinPathFromEnvVar,
@@ -14,6 +15,8 @@ import { packageArgument } from '../runner/chunkPackages';
 import { testOutput } from './testOutput';
 import { RunSettings, goBinary, goPath } from './settings';
 import { RawTestResult } from '../rawTestResult';
+import { CoverageStream, CoverProfile, parseCoverProfile } from './coverageProfile';
+import { StringDecoder } from 'string_decoder';
 import { FinishedTest, GoTestJsonParser } from '../exec/goTestJsonParser';
 //const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const sendSignal = 'SIGKILL';
@@ -146,6 +149,11 @@ export interface TestConfig {
   testName: string;
 
   /**
+   * Whether the run measures what the tests cover.
+   */
+  coverage?: boolean;
+
+  /**
    * The packages the run tests, when it tests more than one.
    *
    * A run that tests several packages uses one process for all of them, so
@@ -161,6 +169,13 @@ export interface TestConfig {
    * run is still going.
    */
   onTestFinished?: (test: FinishedTest) => void;
+
+  /**
+   * Called when a package of the run has finished, with the coverage of the
+   * files that were added to the profile since the last call, while the rest
+   * of the run is still going. Only a run that measures coverage calls it.
+   */
+  onCoverage?: (profile: CoverProfile) => void;
 }
 
 export function getBinPath(tool: string): string {
@@ -256,6 +271,16 @@ export function runGoTest(
     } else {
       args.push('-timeout', testconfig.settings.timeout);
     }
+    // The profile is written to a file of its own, so that runs that go on
+    // at the same time do not write over each other.
+    let coverFile: string | undefined;
+    if (testconfig.coverage && !testconfig.isBenchmark) {
+      coverFile = path.join(
+        os.tmpdir(),
+        `gotestexplorer-cover-${process.pid}-${Date.now()}-${coverCounter++}.out`,
+      );
+      args.push('-coverprofile', coverFile);
+    }
     if (buildTags && testconfig.flags.indexOf('-tags') === -1) {
       args.push('-tags', buildTags);
     }
@@ -323,7 +348,12 @@ export function runGoTest(
           }
           failRun(error);
         });
-        const parser = new GoTestJsonParser(testconfig.onTestFinished);
+        const parser = new GoTestJsonParser(
+          testconfig.onTestFinished,
+          coverFile && testconfig.onCoverage
+            ? tailCoverProfile(coverFile, testconfig.onCoverage)
+            : undefined,
+        );
         const errBuf = new LineBuffer();
 
         if (token) {
@@ -383,13 +413,82 @@ export function runGoTest(
           const output = results.buildOutput.concat(results.output);
           const failedTests: string[] = [];
           results.packages.forEach((pkg) => failedTests.push(...pkg.failedTests));
-          resolve(new RawTestResult(code === 0, output, failedTests, undefined, results.packages));
+          resolve(
+            new RawTestResult(
+              code === 0,
+              output,
+              failedTests,
+              undefined,
+              results.packages,
+              coverFile ? readCoverProfile(coverFile) : undefined,
+            ),
+          );
         });
 
         runningTestProcesses.push(tp);
       })
       .catch((error) => failRun(error));
   });
+}
+
+/**
+ * Makes the names of the profile files of the runs differ.
+ */
+let coverCounter = 0;
+
+/**
+ * Makes a function that reads what was appended to a profile since it was last
+ * called, and hands the coverage of those files on.
+ *
+ * Only the new bytes are read, so a module with many packages is not read
+ * again in full as each of them finishes.
+ */
+function tailCoverProfile(file: string, onCoverage: (profile: CoverProfile) => void): () => void {
+  const stream = new CoverageStream();
+  const decoder = new StringDecoder('utf8');
+  let offset = 0;
+  return () => {
+    let fd: number | undefined;
+    try {
+      fd = fs.openSync(file, 'r');
+      const size = fs.fstatSync(fd).size;
+      if (size <= offset) {
+        return;
+      }
+      const chunk = Buffer.alloc(size - offset);
+      fs.readSync(fd, chunk, 0, chunk.length, offset);
+      offset = size;
+      const touched = stream.push(decoder.write(chunk));
+      if (touched.size > 0) {
+        onCoverage(touched);
+      }
+    } catch {
+      // The file is not there yet, or cannot be read: the profile is read in
+      // full when the run ends.
+    } finally {
+      if (fd !== undefined) {
+        fs.closeSync(fd);
+      }
+    }
+  };
+}
+
+/**
+ * Reads the profile a run wrote, and removes the file. A run that was killed,
+ * or did not build, has no profile.
+ */
+function readCoverProfile(file: string): CoverProfile | undefined {
+  try {
+    return parseCoverProfile(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return undefined;
+  } finally {
+    try {
+      fs.unlinkSync(file);
+    } catch {
+      // There was no file to remove.
+    }
+  }
 }
 
 /**
