@@ -3,6 +3,7 @@
     "displayName": "Go Test Explorer",
     "description": "Run and explore Go tests in a tree view",
     "version": "0.1.13",
+    "license": "MIT",
     "publisher": "premparihar",
     "engines": {
         "vscode": "^1.85.0"

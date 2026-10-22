@@ -2,6 +2,8 @@
 
 Run and explore Go tests in a tree view inside Visual Studio Code.
 
+![go-test-explorer](media/gotest.gif)
+
 ## Features
 - Discover `*_test.go` files and functions without spawning external tools
 - Run tests per file, per suite, or all tests in a module in one `go test` invocation
@@ -25,3 +27,7 @@ npm run lint
 npm run test
 npm run package
 ```
+
+## License
+
+[MIT](LICENSE)
