@@ -335,8 +335,12 @@ finished meant that nothing changed in the tree until the slowest test was
 done. The parser now reports each test the moment its `pass`, `fail` or `skip`
 event arrives, and the suite of that test is redrawn at once, so the icon
 changes while the rest of the run is still going. A test is failed when it or
-one of its subtests failed. This costs one redraw of one suite per test instead
-of one per run; the redraw is aimed at the suite, never at the whole tree. The
+one of its subtests failed. The redraws are batched: the result is applied to
+its node at once, and the suites that changed are redrawn together 50 ms after
+the first of them finished (`Config.OutcomeRedrawDelay`), so no result is shown
+later than that and a run of thousands of fast tests redraws a few times a
+second instead of once per test. A batch that touched more than 20 suites
+redraws the whole tree once, and the end of a run draws what is still waiting. The
 end of the run still reports the suite and the tests that never reported
 (a build failure, a package that crashed), and leaves alone the tests that were
 already shown, which also keeps each test's own output instead of the output of

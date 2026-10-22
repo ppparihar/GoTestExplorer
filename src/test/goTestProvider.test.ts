@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as vscode from 'vscode';
 import { Commands } from '../commands';
 import { GoTestProvider } from '../goTestProvider';
@@ -6,6 +6,7 @@ import { TestNode } from '../testNode';
 import { TestResult } from '../testResult';
 import { Uri } from './mocks/vscode';
 import { Icons } from '../icons';
+import { Config } from '../config';
 
 const fileUri = Uri.file('/repo/alpha_test.go');
 
@@ -257,6 +258,7 @@ describe('GoTestProvider shows a test as soon as it finishes', () => {
   let redrawn: (TestNode | undefined)[];
 
   beforeEach(() => {
+    vi.useFakeTimers();
     commands = new Commands();
     provider = new GoTestProvider(fakeContext(), commands);
     redrawn = [];
@@ -264,6 +266,10 @@ describe('GoTestProvider shows a test as soon as it finishes', () => {
     provider.onDidChangeTreeData((node) => {
       redrawn.push(node);
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('applies the outcome and ends the spinner of the test', () => {
@@ -277,13 +283,120 @@ describe('GoTestProvider shows a test as soon as it finishes', () => {
     expect(suite.children[0].testResult.isPassed).toBe(false);
   });
 
-  it('redraws the suite of the test, once', () => {
+  it('redraws the suite of the test, once, after a short wait', () => {
     const suite = provider.discoveredTests[0];
     redrawn.length = 0;
 
     commands.sendTestOutcome(new TestResult(fileUri, 'TestAlpha', true, []));
+    expect(redrawn).toEqual([]);
+
+    vi.advanceTimersByTime(Config.OutcomeRedrawDelay);
 
     expect(redrawn).toEqual([suite]);
+  });
+
+  it('redraws a suite once for all the tests that finished in the same moment', () => {
+    const suite = new TestNode('alpha_test.go', fileUri, [
+      new TestNode('TestOne', fileUri),
+      new TestNode('TestTwo', fileUri),
+      new TestNode('TestThree', fileUri),
+    ]);
+    commands.sendDiscoveredTests([suite]);
+    redrawn.length = 0;
+
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestOne', true, []));
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestTwo', true, []));
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestThree', false, []));
+    vi.advanceTimersByTime(Config.OutcomeRedrawDelay);
+
+    expect(redrawn).toEqual([suite]);
+    expect(suite.children.map((child) => child.testResult.isPassed)).toEqual([true, true, false]);
+  });
+
+  it('shows a result no later than the wait, however many tests keep finishing', () => {
+    const suite = provider.discoveredTests[0];
+    redrawn.length = 0;
+
+    // A test finishes every 10 ms. The wait is not extended by the next one.
+    for (let tick = 0; tick < 10; tick++) {
+      commands.sendTestOutcome(new TestResult(fileUri, 'TestAlpha', true, []));
+      vi.advanceTimersByTime(10);
+    }
+
+    expect(redrawn.length).toBeGreaterThanOrEqual(1);
+    expect(redrawn.every((node) => node === suite)).toBe(true);
+    // 100 ms passed, so the redraws are a handful, not one per test.
+    expect(redrawn.length).toBeLessThan(10);
+  });
+
+  it('redraws each suite that finished a test, once', () => {
+    const second = new TestNode('beta_test.go', Uri.file('/repo/beta_test.go'), [
+      new TestNode('TestBeta', Uri.file('/repo/beta_test.go')),
+    ]);
+    commands.sendDiscoveredTests([provider.discoveredTests[0], second]);
+    redrawn.length = 0;
+
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestAlpha', true, []));
+    commands.sendTestOutcome(new TestResult(second.uri, 'TestBeta', true, []));
+    vi.advanceTimersByTime(Config.OutcomeRedrawDelay);
+
+    expect(redrawn.length).toBe(2);
+  });
+
+  it('redraws the whole tree once when many suites changed', () => {
+    const suites = Array.from({ length: Config.OutcomeRedrawMaxSuites + 1 }, (_, index) => {
+      const uri = Uri.file(`/repo/f${index}_test.go`);
+      return new TestNode(`f${index}_test.go`, uri, [new TestNode('TestX', uri)]);
+    });
+    commands.sendDiscoveredTests(suites);
+    redrawn.length = 0;
+
+    suites.forEach((suite) =>
+      commands.sendTestOutcome(new TestResult(suite.uri, 'TestX', true, [])),
+    );
+    vi.advanceTimersByTime(Config.OutcomeRedrawDelay);
+
+    expect(redrawn).toEqual([undefined]);
+  });
+
+  it('does not draw a result twice when its run completes inside the wait', () => {
+    const suite = provider.discoveredTests[0];
+    redrawn.length = 0;
+
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestAlpha', true, []));
+    commands.sendTestCompleted([fileUri]);
+    vi.advanceTimersByTime(Config.OutcomeRedrawDelay * 4);
+
+    // Only the redraw of the end of the run.
+    expect(redrawn).toEqual([suite]);
+  });
+
+  it('draws the results of another run that is still going when a run completes', () => {
+    const other = new TestNode('beta_test.go', Uri.file('/repo/beta_test.go'), [
+      new TestNode('TestBeta', Uri.file('/repo/beta_test.go')),
+    ]);
+    const first = provider.discoveredTests[0];
+    commands.sendDiscoveredTests([first, other]);
+    redrawn.length = 0;
+
+    commands.sendTestOutcome(new TestResult(other.uri, 'TestBeta', true, []));
+    commands.sendTestCompleted([fileUri]);
+
+    // The other run's result is drawn now, and the finished run's file once.
+    expect(redrawn).toContain(other);
+    expect(redrawn).toContain(first);
+    vi.advanceTimersByTime(Config.OutcomeRedrawDelay * 4);
+    expect(redrawn.filter((node) => node === other).length).toBe(1);
+  });
+
+  it('draws nothing after a full redraw has covered the waiting results', () => {
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestAlpha', true, []));
+    commands.sendTestDiscoveryStarted();
+    redrawn.length = 0;
+
+    vi.advanceTimersByTime(Config.OutcomeRedrawDelay * 4);
+
+    expect(redrawn).toEqual([]);
   });
 
   it('leaves the other tests of the run spinning', () => {
@@ -307,6 +420,7 @@ describe('GoTestProvider ends the spinner of a suite when its last test finishes
   let suite: TestNode;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     commands = new Commands();
     provider = new GoTestProvider(fakeContext(), commands);
     suite = new TestNode('alpha_test.go', fileUri, [
@@ -316,6 +430,10 @@ describe('GoTestProvider ends the spinner of a suite when its last test finishes
     commands.sendDiscoveredTests([suite]);
     // A run of the whole suite marks every test and the suite itself as running.
     commands.sendTestRunStarted([...suite.children, suite]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('keeps the suite running while one of its tests is still running', () => {
@@ -368,6 +486,8 @@ describe('GoTestProvider ends the spinner of a suite when its last test finishes
 
     commands.sendTestOutcome(new TestResult(fileUri, 'TestOne', true, []));
     commands.sendTestOutcome(new TestResult(fileUri, 'TestTwo', true, []));
+    // The redraw is batched, so it comes after the short wait.
+    vi.advanceTimersByTime(Config.OutcomeRedrawDelay);
 
     expect(redrawn[redrawn.length - 1]).toBe(suite);
   });

@@ -94,4 +94,25 @@ export class Config {
   public static get DiscoveryConcurrency(): number {
     return 16;
   }
+
+  /**
+   * How long the tree waits, in milliseconds, before it redraws the tests
+   * that finished while a run is going.
+   *
+   * The wait starts when the first test finishes and is not extended by the
+   * ones that follow, so a result is never shown later than this. A run of
+   * thousands of fast tests is redrawn a few times a second instead of once
+   * per test.
+   */
+  public static get OutcomeRedrawDelay(): number {
+    return 50;
+  }
+
+  /**
+   * The most suites that are redrawn one by one when a batch of results is
+   * shown. A batch that touched more suites redraws the whole tree once.
+   */
+  public static get OutcomeRedrawMaxSuites(): number {
+    return 20;
+  }
 }
