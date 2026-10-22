@@ -282,8 +282,34 @@ export class GoTestExplorer {
         files.set(path.join(module.root, ...name.slice(prefix.length).split('/')), blocks);
       }
     });
-    this.coverage.update(files);
+    this.coverage.update(this.scopeOfRun(testConfig, files));
     this.showCoverageSummary();
+  }
+
+  /**
+   * The files whose coverage a run replaces.
+   *
+   * The tool reports every file of a package, and a run of one test file only
+   * runs some of the package: applying all of it would overwrite the coverage
+   * the other files had from an earlier run with the mostly empty coverage of
+   * this one. A run of one test file therefore replaces the coverage of the
+   * file it tests (`a_test.go` tests `a.go`), or of its package when there is
+   * no such file. A run of a whole module replaces everything it covered.
+   */
+  private scopeOfRun(
+    testConfig: TestConfig,
+    files: Map<string, CoverBlock[]>,
+  ): Map<string, CoverBlock[]> {
+    if (testConfig.packages && testConfig.packages.length > 0) {
+      return files;
+    }
+    const tested = testConfig.testUri.fsPath.replace(/_test\.go$/, '.go');
+    const own = files.get(tested);
+    if (own) {
+      return new Map([[tested, own]]);
+    }
+    const dir = path.dirname(testConfig.testUri.fsPath);
+    return new Map(Array.from(files).filter(([file]) => path.dirname(file) === dir));
   }
 
   /**

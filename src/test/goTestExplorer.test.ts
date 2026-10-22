@@ -439,6 +439,57 @@ describe('GoTestExplorer runs a whole module', () => {
       expect((await explorer.goTestProvider.getChildren())[0]).toBe(a);
     });
 
+    it('lets a run of one test file change only the file it tests', async () => {
+      const dir = path.join(moduleDir, 'pkg', 'a');
+      const a = suiteIn(dir, 'a_test.go', ['TestAlpha']);
+      const b = suiteIn(dir, 'b_test.go', ['TestBeta']);
+      explorer.commands.sendDiscoveredTests([a, b]);
+      const marksOfB = openEditor(path.join(dir, 'b.go'));
+      const block = (count: number) => [{ startLine: 1, endLine: 2, statements: 1, count }];
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+
+      // The whole module ran: both files were covered.
+      runGoTest.mockResolvedValue(
+        new RawTestResult(
+          true,
+          [],
+          [],
+          undefined,
+          new Map(),
+          new Map([
+            ['example.com/mod/pkg/a/a.go', block(1)],
+            ['example.com/mod/pkg/a/b.go', block(1)],
+          ]),
+        ),
+      );
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+      await waitFor(() => completed.length > 0);
+      expect(explorer.goTestProvider.getTreeItem(b).description).toBe('100.0%');
+
+      // Only the tests of a_test.go ran, and the tool reports b.go as not run.
+      const before = marksOfB.length;
+      runGoTest.mockResolvedValue(
+        new RawTestResult(
+          true,
+          [],
+          [],
+          undefined,
+          new Map(),
+          new Map([
+            ['example.com/mod/pkg/a/a.go', block(0)],
+            ['example.com/mod/pkg/a/b.go', block(0)],
+          ]),
+        ),
+      );
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => explorer.goTestProvider.getTreeItem(a).description === '0.0%');
+
+      expect(explorer.goTestProvider.getTreeItem(b).description).toBe('100.0%');
+      // b.go is still marked as it was: all of it covered, none of it not.
+      expect(marksOfB.length).toBeGreaterThan(before);
+      expect(marksOfB.slice(-2).map((m) => m.lines)).toEqual([[0, 1], []]);
+    });
+
     it('shows the coverage beside each test file', async () => {
       const dir = path.join(moduleDir, 'pkg', 'a');
       const a = suiteIn(dir, 'a_test.go', ['TestAlpha']);
