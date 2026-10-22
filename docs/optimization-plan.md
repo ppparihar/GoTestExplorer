@@ -127,7 +127,7 @@ Each phase is independently shippable and independently verifiable.
 | Phase 0 — Baseline and test harness | Done | `npm test` runs 167 assertions across 12 files; `npm run bench` writes `bench/results/baseline.json` |
 | Phase 1 — Correctness fixes | Done | C1–C12 applied; each fix has a regression test in `src/test/` |
 | Phase 2 — Discovery performance | Done | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0; a refresh over a warm cache costs 3.6 ms and a saved file reaches the tree without a manual refresh |
-| Phase 3 — Execution performance | In progress | 3a and 3b done: the run is parsed from the `go test -json` event stream, and the `-run` anchoring is proven against the real toolchain |
+| Phase 3 — Execution performance | In progress | 3a–3c done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, and the tree is redrawn once per run instead of once per test |
 | Phase 4 — Toolchain and delivery | Partially done | TypeScript 5, `@types/vscode` 1.85, Vitest, `tsx` landed as Phase 0 prerequisites; the rest of Phase 4 is still open |
 | Phase 5 — Native Testing API | Not started | Deferred |
 | Phase 6 — Feature parity | Not started | Deferred |
@@ -317,9 +317,17 @@ The fixtures in `src/test/fixtures/` are the captured output of the real toolcha
 
 `src/test/runGoTest.test.ts` runs the real toolchain against a fixture module: with `TestPassing`, `TestPassingExtra` and `TestOther` in one file, a run of `TestPassing` and `TestOther` must not run `TestPassingExtra`. The test reads the emitted JSON and asserts the names that ran. Reverting the regex to the ungrouped alternation `^TestPassing|TestOther$` — which parses as `(^TestPassing)|(TestOther$)` — makes the test fail, so the anchoring is proven rather than asserted.
 
-**3c. Batched tree refresh** — `src/goTestProvider.ts:64-71`
+**3c. Batched tree refresh** — `src/goTestProvider.ts:64-71` — **Done**
 
 Collect results per package and fire `onDidChangeTreeData` **once** when the package completes.
+
+**Done.** The tree was redrawn once per test result, and once per test that
+started running, so a suite of twenty tests redrew the tree more than forty
+times. Now the tests of a run are reported in one event, the outcome of each
+test is applied to its node as it arrives, and the tree is redrawn once when
+the run has finished — for the node that holds the tests, so only that part of
+the tree is redrawn. `testCompleted` carries the URI of the file whose run
+finished, which is what the redraw is aimed at.
 
 **3d. Cancellation** — `src/lib/testUtil.ts:16` exposes `runningTestProcesses`; wire a "Cancel Test Run" command and `CancellationToken` support, killing the child process tree.
 
@@ -341,7 +349,7 @@ Add `contributes.configuration` for: `maxParallelTests`, `skipFolders`, `goPath`
 - A subtest failure marks its parent test failed. **Met** — the failed test is `TestAlpha/sub` and `TestAlpha` is reported as failed; `src/test/goTestExplorer.test.ts` covers it.
 - "Run All" across 10 packages spawns **1** `go test` process. **Open** — 3e.
 - A test run can be cancelled from the UI. **Open** — 3d.
-- The tree re-renders once per package, not once per test. **Open** — 3c.
+- The tree re-renders once per package, not once per test. **Met** — a suite of twenty tests redraws the tree once, when the run finishes; `src/test/goTestProvider.test.ts` counts the redraws.
 
 **Effort:** ~4 days.
 

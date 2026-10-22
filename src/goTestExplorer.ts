@@ -46,7 +46,7 @@ export class GoTestExplorer {
 
     }
     async onRunSingleTest(testNode: TestNode) {
-        this.commands.sendTestRunStarted(testNode);
+        this.commands.sendTestRunStarted([testNode]);
         const testConfig = this.buildTestConfig(testNode);
         this.enqueueTest(testConfig);
     }
@@ -54,8 +54,9 @@ export class GoTestExplorer {
         if (testNode.children.length === 0) {
             return;
         }
-        testNode.children.forEach(t => this.commands.sendTestRunStarted(t));
-        this.commands.sendTestRunStarted(testNode);
+        // Every test of the suite is reported in one event, so the tree is
+        // redrawn once for the whole suite.
+        this.commands.sendTestRunStarted([...testNode.children, testNode]);
         const testConfig = this.buildTestConfig(testNode);
         this.enqueueTest(testConfig);
     }
@@ -102,7 +103,7 @@ export class GoTestExplorer {
         });
 
         this.commands.sendTestResult(new TestResult(testConfig.testUri, testConfig.testName, isTestSuitePassed, result.output, result.err));
-        this.commands.sendTestCompleted();
+        this.commands.sendTestCompleted(testConfig.testUri);
     }
 
     /**
@@ -115,7 +116,7 @@ export class GoTestExplorer {
             this.commands.sendTestResult(new TestResult(testConfig.testUri, t, false, output, error));
         });
         this.commands.sendTestResult(new TestResult(testConfig.testUri, testConfig.testName, false, output, error));
-        this.commands.sendTestCompleted();
+        this.commands.sendTestCompleted(testConfig.testUri);
     }
 
     /**

@@ -146,3 +146,60 @@ describe('GoTestProvider', () => {
 		});
 	});
 });
+
+describe('GoTestProvider refreshes', () => {
+	let commands: Commands;
+	let provider: GoTestProvider;
+	let refreshes: number;
+	let refreshed: (TestNode | undefined)[];
+
+	beforeEach(() => {
+		commands = new Commands();
+		provider = new GoTestProvider(fakeContext(), commands);
+		commands.sendDiscoveredTests([buildSuite()]);
+		refreshes = 0;
+		refreshed = [];
+		provider.onDidChangeTreeData(node => {
+			refreshes++;
+			refreshed.push(node);
+		});
+	});
+
+	it('redraws the tree once for a run, not once per test', () => {
+		const suite = provider.discoveredTests[0];
+
+		commands.sendTestRunStarted([suite.children[0], suite]);
+		expect(refreshes).toBe(1);
+
+		// The outcome of every test of the run arrives one after the other.
+		commands.sendTestResult(new TestResult(fileUri, 'TestAlpha', true, []));
+		commands.sendTestResult(new TestResult(fileUri, 'alpha_test.go', true, []));
+		expect(refreshes).toBe(1);
+
+		commands.sendTestCompleted(fileUri);
+		expect(refreshes).toBe(2);
+	});
+
+	it('redraws the node that holds the tests', () => {
+		commands.sendTestCompleted(fileUri);
+
+		expect(refreshed[0].name).toBe('alpha_test.go');
+	});
+
+	it('marks the tests of a run as running', () => {
+		const suite = provider.discoveredTests[0];
+
+		commands.sendTestRunStarted([suite.children[0], suite]);
+
+		expect(suite.children[0].isLoading).toBe(true);
+	});
+
+	it('shows the outcome of a run when it finishes', () => {
+		commands.sendTestResult(new TestResult(fileUri, 'TestAlpha', false, ['boom']));
+		commands.sendTestCompleted(fileUri);
+
+		const suite = provider.discoveredTests[0];
+		expect(suite.children[0].testResult.isPassed).toBe(false);
+		expect(suite.icon).toBe('testSuiteFailed.svg');
+	});
+});

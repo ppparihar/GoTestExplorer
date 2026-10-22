@@ -81,6 +81,20 @@ describe('GoTestExplorer', () => {
 		expect(config.functions).toEqual(['TestAlpha', 'TestBeta']);
 	});
 
+	it('reports the tests of a suite as one run', async () => {
+		const suite = new TestNode('alpha_test.go', fileUri, [
+			new TestNode('TestAlpha', fileUri),
+			new TestNode('TestBeta', fileUri)
+		]);
+		const started: TestNode[][] = [];
+		explorer.commands.testRunStarted(nodes => started.push(nodes));
+
+		await vscode.commands.executeCommand('goTestExplorer.runTestSuite', suite);
+
+		expect(started.length).toBe(1);
+		expect(started[0].map(node => node.name)).toEqual(['TestAlpha', 'TestBeta', 'alpha_test.go']);
+	});
+
 	it('marks the tests as failed when the run fails', async () => {
 		runGoTest.mockResolvedValue(new RawTestResult(false, ['--- FAIL: TestAlpha'], ['TestAlpha']));
 		const node = new TestNode('TestAlpha', fileUri);

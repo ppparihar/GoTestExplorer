@@ -13,16 +13,22 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	private __discoveredTestsMap: Map<string, TestNode> = new Map();
 	private _discoveredTests: TestNode[] = [];
 	private _discovering: boolean;
+	/**
+	 * The nodes whose result changed since the tree was last redrawn.
+	 */
+	private readonly _pendingResults: Set<TestNode> = new Set();
 	constructor(private context: vscode.ExtensionContext, commands: Commands) {
 		context.subscriptions.push(commands.discoveredTest(this.onDicoveredTest, this));
 		context.subscriptions.push(commands.testDiscoveryStarted(this.onDiscoverTestStart, this));
 		context.subscriptions.push(commands.testResult(this.updateTestResult, this));
 		context.subscriptions.push(commands.testRunStarted(this.onTestRunStarted, this));
+		context.subscriptions.push(commands.testCompleted(this.onTestRunCompleted, this));
 		context.subscriptions.push(commands.testFileChanged(this.onTestFileChanged, this));
 		context.subscriptions.push(commands.testFileRemoved(this.onTestFileRemoved, this));
 	}
 
 	private refresh(testNode?: TestNode): void {
+		this._pendingResults.clear();
 		this._onDidChangeTreeData.fire(testNode);
 	}
 
@@ -63,13 +69,19 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		return this.__discoveredTestsMap.get(key);
 	}
 
+	/**
+	 * Applies the outcome of a test.
+	 *
+	 * The tree is not redrawn here: the outcome of every test of a run arrives
+	 * one after the other, and the tree is redrawn once when the run has
+	 * finished.
+	 */
 	private updateTestResult(testResult: TestResult) {
-
 		let testNode = this.__discoveredTestsMap.get(this.getNodeKey(testResult.uri.fsPath, testResult.testName));
 		if (testNode) {
 			testNode.testResult = testResult;
+			this._pendingResults.add(testNode);
 		}
-		this.refresh(testNode);
 	}
 	private onDiscoverTestStart() {
 		this._discoveredTests = [];
@@ -160,22 +172,39 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 		}
 		this.__discoveredTestsMap.set(key, node);
 	}
-	private onTestRunStarted(testNode: TestNode) {
-		testNode ? this.setLoading(testNode) : this.setAlloading();
+	/**
+	 * The tests of a run have started.
+	 *
+	 * Every test of the run is marked as running, and the tree is redrawn
+	 * once for the whole run.
+	 */
+	private onTestRunStarted(testNodes: TestNode[]) {
+		testNodes.forEach(testNode => this.setLoading(testNode));
+		this.refresh(this.topNodeOf(testNodes));
 	}
+
+	/**
+	 * The run of a file has finished, so the tree is redrawn once with the
+	 * outcome of every test of that run.
+	 */
+	private onTestRunCompleted(testUri: vscode.Uri) {
+		const suite = this.__discoveredTestsMap.get(this.getNodeKey(testUri.fsPath, path.basename(testUri.fsPath)));
+		this.refresh(suite);
+	}
+
+	/**
+	 * The node that holds the others, so the tree is redrawn once for the
+	 * whole group.
+	 */
+	private topNodeOf(testNodes: TestNode[]): TestNode | undefined {
+		return testNodes.find(node => !testNodes.some(other => other !== node && other.isTestSuite && other.children.includes(node)));
+	}
+
 	private setLoading(testNode: TestNode) {
 		let tempNode = this.__discoveredTestsMap.get(this.getNodeKey(testNode.uri.fsPath, testNode.name));
 		if (tempNode) {
 			tempNode.setLoading();
 		}
-		this.refresh(tempNode);
-	}
-	private setAlloading() {
-		this.discoveredTests.
-			filter(s => s.isTestSuite).
-			forEach(s => s.children.forEach(t => t.setLoading()));
-
-		this.refresh();
 	}
 	private getNodeKey(uri: string, nodeName: string): string {
 		return uri + "__" + nodeName;

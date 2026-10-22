@@ -1,4 +1,4 @@
-import { EventEmitter, Event } from "vscode";
+import { EventEmitter, Event, Uri } from "vscode";
 import { TestNode } from "./testNode";
 import { TestResult } from "./testResult";
 
@@ -6,9 +6,9 @@ export class Commands {
 
     private readonly onTestDiscoveryFinishedEmitter = new EventEmitter<TestNode[]>();
     private readonly onTestDiscoveryStartedEmitter = new EventEmitter<void>();
-    private readonly onTestRunStartedEmitter = new EventEmitter<TestNode>();
+    private readonly onTestRunStartedEmitter = new EventEmitter<TestNode[]>();
     private readonly onTestResultEmitter = new EventEmitter<TestResult>();
-    private readonly onTestCompletedEmitter = new EventEmitter<void>();
+    private readonly onTestCompletedEmitter = new EventEmitter<Uri>();
     private readonly onTestFileChangedEmitter = new EventEmitter<TestNode>();
     private readonly onTestFileRemovedEmitter = new EventEmitter<string>();
 
@@ -25,11 +25,17 @@ export class Commands {
         this.onTestDiscoveryStartedEmitter.fire();
 
     }
-    public get testRunStarted(): Event<TestNode> {
+    /**
+     * The tests that are about to run.
+     *
+     * Every test of a run is reported in one event, so the tree is redrawn
+     * once for the whole run rather than once per test.
+     */
+    public get testRunStarted(): Event<TestNode[]> {
         return this.onTestRunStartedEmitter.event;
     }
-    public sendTestRunStarted(testNode: TestNode) {
-        this.onTestRunStartedEmitter.fire(testNode);
+    public sendTestRunStarted(testNodes: TestNode[]) {
+        this.onTestRunStartedEmitter.fire(testNodes);
     }
     public get testResult(): Event<TestResult> {
         return this.onTestResultEmitter.event;
@@ -37,11 +43,16 @@ export class Commands {
     public sendTestResult(testResult: TestResult) {
         this.onTestResultEmitter.fire(testResult);
     }
-    public get testCompleted(): Event<void> {
+
+    /**
+     * The run of the file that holds the given URI has finished, so the tree
+     * can be redrawn once with the outcome of every test of that run.
+     */
+    public get testCompleted(): Event<Uri> {
         return this.onTestCompletedEmitter.event;
     }
-    public sendTestCompleted() :void {
-        this.onTestCompletedEmitter.fire();
+    public sendTestCompleted(testUri: Uri) :void {
+        this.onTestCompletedEmitter.fire(testUri);
     }
 
     /**
