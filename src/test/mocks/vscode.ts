@@ -357,19 +357,15 @@ export interface CancellationToken {
 export class CancellationTokenSource {
   private readonly emitter = new EventEmitter<void>();
   private _cancelled = false;
+  private readonly isCancelled = (): boolean => this._cancelled;
 
-  readonly token: CancellationToken;
-
-  constructor() {
-    const source = this;
-    this.token = {
-      get isCancellationRequested(): boolean {
-        return source._cancelled;
-      },
-      onCancellationRequested: (listener, thisArgs?, disposables?) =>
-        source.emitter.event(listener, thisArgs, disposables),
-    };
-  }
+  readonly token: CancellationToken = ((isCancelled) => ({
+    get isCancellationRequested(): boolean {
+      return isCancelled();
+    },
+    onCancellationRequested: (listener, thisArgs?, disposables?) =>
+      this.emitter.event(listener, thisArgs, disposables),
+  }))(this.isCancelled);
 
   cancel(): void {
     if (this._cancelled) {

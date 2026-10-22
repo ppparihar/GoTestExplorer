@@ -1,5 +1,5 @@
-import fs = require('fs');
-import path = require('path');
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * A Go module.
@@ -52,7 +52,7 @@ function readModulePath(modFile: string): string | undefined {
   let content: string;
   try {
     content = fs.readFileSync(modFile, 'utf8');
-  } catch (e) {
+  } catch {
     return undefined;
   }
   for (const line of content.split('\n')) {

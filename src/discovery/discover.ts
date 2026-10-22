@@ -66,7 +66,7 @@ export async function discoverTests(
           confident: scan.confident,
           reason: scan.reason,
         };
-      } catch (e) {
+      } catch {
         // The file was deleted between the walk and the read, so it is
         // no longer part of the tree.
         return null;

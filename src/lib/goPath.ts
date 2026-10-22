@@ -3,9 +3,9 @@
 /**
  * This file is loaded by both the extension and debug adapter, so it cannot import 'vscode'
  */
-import fs = require('fs');
-import path = require('path');
-import os = require('os');
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 let binPathCache: { [bin: string]: string } = {};
 
@@ -93,7 +93,7 @@ function correctBinname(toolName: string) {
 function fileExists(filePath: string): boolean {
   try {
     return fs.statSync(filePath).isFile();
-  } catch (e) {
+  } catch {
     return false;
   }
 }
@@ -118,8 +118,7 @@ export function stripBOM(s: string): string {
 }
 
 export function parseEnvFile(path: string): { [key: string]: string } {
-  let env: { [key: string]: string };
-  env = {};
+  const env: { [key: string]: string } = {};
   if (!path) {
     return env;
   }
@@ -127,7 +126,7 @@ export function parseEnvFile(path: string): { [key: string]: string } {
   try {
     const buffer = stripBOM(fs.readFileSync(path, 'utf8'));
     buffer.split('\n').forEach((line) => {
-      const r = line.match(/^\s*([\w\.\-]+)\s*=\s*(.*)?\s*$/);
+      const r = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
       if (r !== null) {
         let value = r[2] || '';
         if (value.length > 0 && value.charAt(0) === '"' && value.charAt(value.length - 1) === '"') {
@@ -137,7 +136,7 @@ export function parseEnvFile(path: string): { [key: string]: string } {
       }
     });
     return env;
-  } catch (e) {
+  } catch {
     throw `Cannot load environment variables from file ${path}`;
   }
 }

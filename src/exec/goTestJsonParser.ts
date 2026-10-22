@@ -362,7 +362,7 @@ function parseEvent(line: string): GoTestEvent | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
-  } catch (e) {
+  } catch {
     return null;
   }
 

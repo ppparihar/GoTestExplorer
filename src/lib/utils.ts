@@ -1,8 +1,8 @@
 let toolsGopath: string;
 import * as vscode from 'vscode';
-import path = require('path');
-import os = require('os');
-import cp = require('child_process');
+import * as path from 'path';
+import * as os from 'os';
+import * as cp from 'child_process';
 import { parseEnvFile, resolveHomeDir } from './goPath';
 
 export function getToolsGopath(useCache: boolean = true): string {
@@ -163,9 +163,12 @@ export function getToolsEnvVars(workspaceUri?: vscode.Uri): any {
   // cgo expects go to be in the path
   const goroot: string = envVars['GOROOT'];
   let pathEnvVar: string;
-  if (envVars.hasOwnProperty('PATH')) {
+  if (Object.prototype.hasOwnProperty.call(envVars, 'PATH')) {
     pathEnvVar = 'PATH';
-  } else if (process.platform === 'win32' && envVars.hasOwnProperty('Path')) {
+  } else if (
+    process.platform === 'win32' &&
+    Object.prototype.hasOwnProperty.call(envVars, 'Path')
+  ) {
     pathEnvVar = 'Path';
   }
   if (

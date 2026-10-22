@@ -89,7 +89,7 @@ async function statOf(file: string): Promise<{ mtimeMs: number; size: number } |
   try {
     const stats = await fs.promises.stat(file);
     return { mtimeMs: stats.mtimeMs, size: stats.size };
-  } catch (e) {
+  } catch {
     return null;
   }
 }

@@ -52,7 +52,7 @@ export async function findTestFiles(
       let entries: fs.Dirent[];
       try {
         entries = await fs.promises.readdir(directory, { withFileTypes: true });
-      } catch (e) {
+      } catch {
         // A directory that cannot be read — a permission error, or one
         // that disappeared while the walk was running — is skipped
         // rather than failing the whole discovery.
@@ -141,7 +141,7 @@ export function isInSkippedFolder(filePath: string, skipFolders: readonly string
 async function realPathOf(target: string): Promise<string | null> {
   try {
     return await fs.promises.realpath(target);
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -159,7 +159,7 @@ async function resolveLink(linkPath: string): Promise<ResolvedLink | null> {
       isFile: stats.isFile(),
       realPath: await fs.promises.realpath(linkPath),
     };
-  } catch (e) {
+  } catch {
     return null;
   }
 }

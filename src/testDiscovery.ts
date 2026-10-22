@@ -182,7 +182,7 @@ export class TestDiscovery {
         reason: scan.reason,
       });
       this.commands.sendTestFileChanged(this.buildSuiteNode(filePath, scan.declarations));
-    } catch (e) {
+    } catch {
       // The file was deleted between the event and the read.
       this.commands.sendTestFileRemoved(filePath);
     }

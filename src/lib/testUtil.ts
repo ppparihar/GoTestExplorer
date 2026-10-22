@@ -1,7 +1,7 @@
-import cp = require('child_process');
+import * as cp from 'child_process';
 import * as vscode from 'vscode';
-import fs = require('fs');
-import path = require('path');
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   getBinPathWithPreferredGopath,
   getBinPathFromEnvVar,
@@ -53,7 +53,7 @@ export function killProcessTree(child: cp.ChildProcess, signal: NodeJS.Signals =
     // Windows has no process groups, so the tree is walked by taskkill.
     try {
       cp.execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
-    } catch (e) {
+    } catch {
       // The process is gone already, or could not be killed.
     }
     return;
@@ -62,10 +62,10 @@ export function killProcessTree(child: cp.ChildProcess, signal: NodeJS.Signals =
     // The negative pid addresses the whole process group. The child leads
     // its own group, because it was spawned detached.
     process.kill(-child.pid, signal);
-  } catch (e) {
+  } catch {
     try {
       child.kill(signal);
-    } catch (e2) {
+    } catch {
       // The process is gone already.
     }
   }
@@ -204,7 +204,7 @@ export function isToolAvailable(tool: string): boolean {
   if (path.isAbsolute(binPath)) {
     try {
       return fs.statSync(binPath).isFile();
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -218,7 +218,7 @@ export function runGoTest(
   testconfig: TestConfig,
   token?: vscode.CancellationToken,
 ): Promise<RawTestResult> {
-  return new Promise<RawTestResult>((resolve, reject) => {
+  return new Promise<RawTestResult>((resolve) => {
     // We do not want to clear it if tests are already running, as that could
     // lose valuable output.
     if (runningTestProcesses.length < 1) {

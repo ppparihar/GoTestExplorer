@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import cp = require('child_process');
+import * as cp from 'child_process';
 import { runGoTest, isToolAvailable, cancelRunningTests } from '../lib/testUtil';
 import { buildRunRegex } from '../lib/testArgs';
 import {
@@ -348,7 +348,7 @@ function testBinaryRunning(): boolean {
   try {
     const listing = cp.execFileSync('ps', ['-eo', 'comm']).toString();
     return listing.split('\n').some((line) => line.trim().endsWith('gotestexplorerfixture.test'));
-  } catch (e) {
+  } catch {
     return false;
   }
 }
