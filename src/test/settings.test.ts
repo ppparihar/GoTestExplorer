@@ -18,6 +18,7 @@ import {
   envFile,
   env,
   runInTerminal,
+  showFilesWithoutTests,
   runSettings,
 } from '../lib/settings';
 import { getGoBinaryPath } from '../lib/testUtil';
@@ -262,6 +263,18 @@ describe('runInTerminal', () => {
     __setConfiguration('goTestExplorer', { runInTerminal: false });
 
     expect(runInTerminal()).toBe(false);
+  });
+});
+
+describe('showFilesWithoutTests', () => {
+  it('is off by default', () => {
+    expect(showFilesWithoutTests()).toBe(false);
+  });
+
+  it('uses the setting', () => {
+    __setConfiguration('goTestExplorer', { showFilesWithoutTests: true });
+
+    expect(showFilesWithoutTests()).toBe(true);
   });
 });
 

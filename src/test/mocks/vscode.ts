@@ -215,6 +215,10 @@ export class EventEmitter<T> {
   }
 }
 
+export class ThemeIcon {
+  constructor(public readonly id: string) {}
+}
+
 export class TreeItem {
   contextValue?: string;
   command?: unknown;
@@ -536,6 +540,7 @@ export const __state = {
     warning: [] as string[],
     error: [] as string[],
   },
+  configListeners: [] as Array<(event: { affectsConfiguration(section: string): boolean }) => void>,
   registeredCommands: new Map<string, (...args: unknown[]) => unknown>(),
   openedDocuments: [] as Uri[],
   /**
@@ -624,6 +629,7 @@ export function __reset(): void {
   __state.messages.warning = [];
   __state.messages.error = [];
   __state.registeredCommands.clear();
+  __state.configListeners = [];
   __state.openedDocuments = [];
   __state.documentTexts.clear();
   __state.fileWatchers = [];
@@ -675,6 +681,12 @@ export const workspace = {
       fileName: uri.fsPath,
       positionAt: (offset: number) => new Position(0, offset),
     });
+  },
+  onDidChangeConfiguration(
+    listener: (event: { affectsConfiguration(section: string): boolean }) => void,
+  ): Disposable {
+    __state.configListeners.push(listener);
+    return new Disposable();
   },
   createFileSystemWatcher(glob?: string): MockFileSystemWatcher {
     const watcher = new MockFileSystemWatcher(glob);
@@ -785,6 +797,7 @@ export default {
   Uri,
   Disposable,
   EventEmitter,
+  ThemeIcon,
   TreeItem,
   SymbolInformation,
   WorkspaceConfiguration,
