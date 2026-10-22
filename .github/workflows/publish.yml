@@ -1,0 +1,82 @@
+name: Publish
+
+# Publishes to the Visual Studio Marketplace when a version tag is pushed:
+#
+#   npm version minor --no-git-tag-version   # bump package.json, update CHANGELOG.md
+#   (merge to master)
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# The Marketplace does not allow a version to be replaced, so a tag that does
+# not match package.json, a tag that is not on master, and a version that is
+# already published all fail the run instead of publishing.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  # A manual run only builds and packages, to try the pipeline without a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Two publishes must not race for the same version.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tag is checked against the history of master.
+          fetch-depth: 0
+
+      - name: Check the tag
+        if: github.ref_type == 'tag'
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          package_version=$(node -p "require('./package.json').version")
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $package_version"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::Tag $GITHUB_REF_NAME is not on master. Merge to master, then tag."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run package
+
+      - name: Check the version is new
+        if: github.ref_type == 'tag'
+        run: |
+          id=$(node -p "require('./package.json').publisher + '.' + require('./package.json').name")
+          local_version=$(node -p "require('./package.json').version")
+          published=$(npx vsce show "$id" --json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).versions.map(v => v.version).join(' ')")
+          for version in $published; do
+            if [ "$version" = "$local_version" ]; then
+              echo "::error::Version $local_version is already published. Bump package.json and tag again."
+              exit 1
+            fi
+          done
+
+      - name: Publish
+        if: github.ref_type == 'tag'
+        run: npx vsce publish --packagePath ./*.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Dry run
+        if: github.ref_type != 'tag'
+        run: echo "Dry run, packaged but not published."
