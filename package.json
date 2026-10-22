@@ -212,7 +212,7 @@
     },
     "scripts": {
         "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
-        "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+        "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch=forever",
         "typecheck": "tsc -p ./ --noEmit && tsc -p ./bench --noEmit",
         "test": "npm run typecheck && vitest run",
         "test:watch": "vitest",
