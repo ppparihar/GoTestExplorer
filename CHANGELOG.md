@@ -1,5 +1,19 @@
 # Change Log
 
+## V0.2.1
+
+### Fixed
+- A test file no longer keeps showing as running after all its tests have finished. It shows as passed, or failed if one test failed, as soon as its last test is done.
+- A run that cannot start now ends as failed, with the reason, instead of showing as running for ever.
+- "Run All" works on a module with a very large number of packages. When the package names would be too long for one command line, the module is tested in several runs, one after another.
+
+### Changed
+- The output kept for a test is limited to its first and last lines, with a line saying how many were left out: up to 1,000 lines per test. The terminal still shows every line as it arrives. This keeps a test that prints without end from using the memory of the editor.
+- The tree is redrawn for several finished tests at once, instead of once for each test, so a run of many fast tests is smoother.
+
+### Added
+- The setting `goTestExplorer.maxPackagesPerRun` sets the most packages that one `go test` run tests when "Run All" tests a module. The default, `0`, means no limit on the number: a module is split only when its package names would not fit a command line.
+
 ## V0.2.0
 
 Requires VS Code 1.85 or newer.
