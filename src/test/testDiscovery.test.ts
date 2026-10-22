@@ -484,3 +484,109 @@ async function waitFor(predicate: () => boolean, timeoutMs: number = 5000): Prom
     await new Promise((r) => setTimeout(r, 5));
   }
 }
+
+describe('TestDiscovery chooses what to load', () => {
+  function workspaceWithPackages() {
+    const folder = makeTempDir();
+    for (const name of ['api', 'worker', 'tools/gen']) {
+      const dir = path.join(folder, name);
+      fs.mkdirSync(dir, { recursive: true });
+      writeTestFile(dir, `${path.basename(name)}_test.go`);
+    }
+    __state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+    return folder;
+  }
+
+  async function discover(): Promise<string[]> {
+    const commands = fakeCommands();
+    new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+    await waitFor(() => commands.discovered.length > 0);
+    return commands.discovered[0].map((n) => n.name).sort();
+  }
+
+  it('loads only the folders that were listed', async () => {
+    workspaceWithPackages();
+    __setConfiguration('goTestExplorer', { includePaths: ['api', 'tools'] });
+
+    expect(await discover()).toEqual(['api_test.go', 'gen_test.go']);
+  });
+
+  it('loads everything when the list is empty', async () => {
+    workspaceWithPackages();
+    __setConfiguration('goTestExplorer', { includePaths: [] });
+
+    expect(await discover()).toEqual(['api_test.go', 'gen_test.go', 'worker_test.go']);
+  });
+
+  it('does not list a folder that is inside another listed folder twice', async () => {
+    workspaceWithPackages();
+    __setConfiguration('goTestExplorer', { includePaths: ['tools', 'tools/gen'] });
+
+    expect(await discover()).toEqual(['gen_test.go']);
+  });
+
+  it('says which listed folders do not exist, and loads the ones that do', async () => {
+    workspaceWithPackages();
+    __setConfiguration('goTestExplorer', { includePaths: ['api', 'nope'] });
+
+    expect(await discover()).toEqual(['api_test.go']);
+    expect(__state.messages.warning.join('\n')).toContain('nope');
+  });
+
+  it('leaves out the paths that match an exclude pattern', async () => {
+    workspaceWithPackages();
+    __setConfiguration('goTestExplorer', { excludePaths: ['tools/**', 'worker'] });
+
+    expect(await discover()).toEqual(['api_test.go']);
+  });
+
+  it('leaves out what files.exclude hides, unless the user turned that off', async () => {
+    workspaceWithPackages();
+    __setConfiguration('files', { exclude: { '**/worker': true, '**/api': false } });
+
+    expect(await discover()).toEqual(['api_test.go', 'gen_test.go']);
+
+    __setConfiguration('goTestExplorer', { useFilesExclude: false });
+    expect(await discover()).toEqual(['api_test.go', 'gen_test.go', 'worker_test.go']);
+  });
+
+  it('does not walk the module cache of a GOPATH inside the project', async () => {
+    const folder = workspaceWithPackages();
+    const cached = path.join(folder, 'gopath', 'pkg', 'mod', 'github.com', 'x', 'y@v1.2.3');
+    fs.mkdirSync(cached, { recursive: true });
+    writeTestFile(cached, 'cached_test.go');
+
+    expect(await discover()).toEqual(['api_test.go', 'gen_test.go', 'worker_test.go']);
+  });
+
+  it('ignores a changed file that a pattern leaves out', async () => {
+    const folder = workspaceWithPackages();
+    __setConfiguration('goTestExplorer', { excludePaths: ['worker'] });
+    const commands = fakeCommands();
+    new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+    await waitFor(() => commands.discovered.length > 0);
+
+    __fireFileWatchEvent('change', path.join(folder, 'worker', 'worker_test.go'));
+    await delay(50);
+    expect(commands.changed.length).toBe(0);
+
+    __fireFileWatchEvent('change', path.join(folder, 'api', 'api_test.go'));
+    await waitFor(() => commands.changed.length > 0);
+    expect(commands.changed[0].name).toBe('api_test.go');
+  });
+
+  it('discovers again when a setting that chooses the paths changes', async () => {
+    workspaceWithPackages();
+    const commands = fakeCommands();
+    new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+    await waitFor(() => commands.discovered.length > 0);
+
+    __setConfiguration('goTestExplorer', { includePaths: ['api'] });
+    __state.configListeners.forEach((listener) =>
+      listener({ affectsConfiguration: (section) => section === 'goTestExplorer.includePaths' }),
+    );
+    await waitFor(() => commands.discovered.length > 1);
+
+    expect(commands.discovered[1].map((n) => n.name)).toEqual(['api_test.go']);
+  });
+});

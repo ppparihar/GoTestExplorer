@@ -18,6 +18,8 @@ import {
   envFile,
   env,
   runInTerminal,
+  includePaths,
+  excludePatterns,
   showFilesWithoutTests,
   runSettings,
 } from '../lib/settings';
@@ -275,6 +277,35 @@ describe('showFilesWithoutTests', () => {
     __setConfiguration('goTestExplorer', { showFilesWithoutTests: true });
 
     expect(showFilesWithoutTests()).toBe(true);
+  });
+});
+
+describe('includePaths and excludePatterns', () => {
+  it('are empty by default', () => {
+    expect(includePaths()).toEqual([]);
+    expect(excludePatterns()).toEqual([]);
+  });
+
+  it('read the list the user wrote, without blanks', () => {
+    __setConfiguration('goTestExplorer', { includePaths: ['api', ' ', 'worker'] });
+
+    expect(includePaths()).toEqual(['api', 'worker']);
+  });
+
+  it('join the exclude paths and the folders files.exclude hides', () => {
+    __setConfiguration('goTestExplorer', { excludePaths: ['gen/**'] });
+    __setConfiguration('files', {
+      exclude: { '**/.git': true, '**/*.js': false, '**/*.go': { when: '$(basename).x' } },
+    });
+
+    expect(excludePatterns()).toEqual(['gen/**', '**/.git']);
+  });
+
+  it('leave files.exclude out when the user turned it off', () => {
+    __setConfiguration('goTestExplorer', { excludePaths: ['gen/**'], useFilesExclude: false });
+    __setConfiguration('files', { exclude: { '**/.git': true } });
+
+    expect(excludePatterns()).toEqual(['gen/**']);
   });
 });
 

@@ -62,6 +62,27 @@
                     ],
                     "description": "The names of the folders that are never walked while looking for test files."
                 },
+                "goTestExplorer.includePaths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "The folders that tests are loaded from, relative to the workspace folder (or absolute). Use it for a large workspace, to load only the packages you work on. Empty means the whole workspace folder, or its src folder when it has one."
+                },
+                "goTestExplorer.excludePaths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Glob patterns of the files and folders that are not loaded, relative to the workspace folder, for example \"**/generated\" or \"third_party/**\". A folder that matches is not entered."
+                },
+                "goTestExplorer.useFilesExclude": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether the files.exclude setting of the workspace also leaves files and folders out of the tree."
+                },
                 "goTestExplorer.goPath": {
                     "type": "string",
                     "default": "",

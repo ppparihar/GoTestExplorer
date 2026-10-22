@@ -140,3 +140,21 @@ describe('findTestFiles', () => {
     expect(await find(root)).toEqual(['linked_test.go']);
   });
 });
+
+describe('findTestFiles with a skip rule', () => {
+  it('does not enter a folder the rule leaves out, nor list a file it leaves out', async () => {
+    const root = makeTempDir();
+    write(root, 'a/a_test.go');
+    write(root, 'skipme/b_test.go');
+    write(root, 'a/hidden_test.go');
+
+    const files = await findTestFiles(root, {
+      skipFolders: SKIP,
+      concurrency: 2,
+      skip: (full, isDirectory) =>
+        isDirectory ? path.basename(full) === 'skipme' : path.basename(full) === 'hidden_test.go',
+    });
+
+    expect(files.map((f) => path.relative(root, f)).sort()).toEqual([path.join('a', 'a_test.go')]);
+  });
+});

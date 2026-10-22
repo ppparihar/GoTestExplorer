@@ -128,6 +128,58 @@ export function skipFolders(resource?: vscode.Uri): string[] {
 }
 
 /**
+ * The folders the tests are loaded from, as the user wrote them. Empty means
+ * the whole workspace folder, or its `src` folder when it has one.
+ */
+export function includePaths(resource?: vscode.Uri): string[] {
+  const value = readSetting<string[]>('includePaths', undefined, [], resource);
+  return Array.isArray(value)
+    ? value.filter((entry) => typeof entry === 'string' && entry.trim() !== '')
+    : [];
+}
+
+/**
+ * The glob patterns of the files and folders that are not loaded, relative to
+ * the workspace folder.
+ */
+export function excludePaths(resource?: vscode.Uri): string[] {
+  const value = readSetting<string[]>('excludePaths', undefined, [], resource);
+  return Array.isArray(value)
+    ? value.filter((entry) => typeof entry === 'string' && entry.trim() !== '')
+    : [];
+}
+
+/**
+ * The patterns that leave paths out of the tree: `excludePaths`, and the
+ * `files.exclude` of the workspace unless the user turned that off.
+ *
+ * A pattern of `files.exclude` that is switched off, or that depends on a
+ * `when` clause, is not used.
+ */
+export function excludePatterns(resource?: vscode.Uri): string[] {
+  const patterns = excludePaths(resource);
+  const useFilesExclude = readSetting<boolean>(
+    'useFilesExclude',
+    undefined,
+    Config.DefaultUseFilesExclude,
+    resource,
+  );
+  if (useFilesExclude !== false) {
+    const filesExclude = vscode.workspace
+      .getConfiguration('files', resource)
+      .get<Record<string, unknown>>('exclude');
+    if (filesExclude && typeof filesExclude === 'object') {
+      Object.keys(filesExclude).forEach((pattern) => {
+        if (filesExclude[pattern] === true) {
+          patterns.push(pattern);
+        }
+      });
+    }
+  }
+  return patterns;
+}
+
+/**
  * The GOPATH to use.
  *
  * The GOPATH of the Go extension is used when the user has not set one here.
