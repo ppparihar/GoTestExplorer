@@ -119,16 +119,29 @@ export class GoTestExplorer {
   }
   /**
    * Asks for the text the tests are narrowed to.
+   *
+   * The tree follows the text as it is typed. Enter keeps the filter, and
+   * Escape puts back the one that was on before.
    */
-  private async onFilterTests() {
-    const text = await vscode.window.showInputBox({
-      title: 'Filter tests',
-      prompt: 'Show only the tests whose name, or whose file name, has all of these words',
-      value: this.goTestProvider.filter,
+  private onFilterTests() {
+    const previous = this.goTestProvider.filter;
+    const input = vscode.window.createInputBox();
+    let accepted = false;
+    input.title = 'Filter tests';
+    input.placeholder = 'Words of a test name or a file name';
+    input.value = previous;
+    input.onDidChangeValue((text) => this.setFilter(text));
+    input.onDidAccept(() => {
+      accepted = true;
+      input.hide();
     });
-    if (text !== undefined) {
-      this.setFilter(text);
-    }
+    input.onDidHide(() => {
+      if (!accepted) {
+        this.setFilter(previous);
+      }
+      input.dispose();
+    });
+    input.show();
   }
 
   private setFilter(text: string) {

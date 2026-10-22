@@ -466,7 +466,48 @@ export class MockTerminal {
   }
 }
 
+/**
+ * A stand-in for the quick input box: a test types into it with `type`, and
+ * ends it with `accept` or `cancel`.
+ */
+export class MockInputBox {
+  title = '';
+  placeholder = '';
+  value = '';
+  private readonly changeListeners: Array<(text: string) => void> = [];
+  private readonly acceptListeners: Array<() => void> = [];
+  private readonly hideListeners: Array<() => void> = [];
+  onDidChangeValue(listener: (text: string) => void): Disposable {
+    this.changeListeners.push(listener);
+    return new Disposable();
+  }
+  onDidAccept(listener: () => void): Disposable {
+    this.acceptListeners.push(listener);
+    return new Disposable();
+  }
+  onDidHide(listener: () => void): Disposable {
+    this.hideListeners.push(listener);
+    return new Disposable();
+  }
+  show(): void {}
+  hide(): void {
+    this.hideListeners.forEach((listener) => listener());
+  }
+  dispose(): void {}
+  type(text: string): void {
+    this.value = text;
+    this.changeListeners.forEach((listener) => listener(text));
+  }
+  accept(): void {
+    this.acceptListeners.forEach((listener) => listener());
+  }
+  cancel(): void {
+    this.hide();
+  }
+}
+
 export const __state = {
+  inputBoxes: [] as MockInputBox[],
   workspaceFolders: undefined as WorkspaceFolder[] | undefined,
   rootPath: undefined as string | undefined,
   activeTextEditor: undefined as MockTextEditor | undefined,
@@ -570,6 +611,7 @@ export function __reset(): void {
   __state.openedDocuments = [];
   __state.documentTexts.clear();
   __state.fileWatchers = [];
+  __state.inputBoxes = [];
   __configCalls.reset();
 }
 
@@ -670,8 +712,10 @@ export const window = {
   createTreeView(_id: string, _options: unknown): { message?: string; dispose(): void } {
     return { dispose(): void {} };
   },
-  showInputBox(): Promise<string | undefined> {
-    return Promise.resolve(undefined);
+  createInputBox(): MockInputBox {
+    const box = new MockInputBox();
+    __state.inputBoxes.push(box);
+    return box;
   },
   registerTreeDataProvider(_id: string, _provider: unknown): Disposable {
     return new Disposable();

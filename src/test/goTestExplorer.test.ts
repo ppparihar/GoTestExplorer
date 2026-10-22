@@ -343,6 +343,31 @@ describe('GoTestExplorer runs a whole module', () => {
     expect(runGoTest.mock.calls[0][0].functions).toEqual(['TestBeta']);
   });
 
+  describe('the filter box', () => {
+    const openBox = async () => {
+      await vscode.commands.executeCommand('goTestExplorer.filterTests');
+      return __state.inputBoxes[__state.inputBoxes.length - 1];
+    };
+
+    it('narrows the tree while the text is typed, and keeps it on Enter', async () => {
+      const box = await openBox();
+      box.type('be');
+      expect(explorer.goTestProvider.filter).toBe('be');
+      box.type('beta');
+      expect(explorer.goTestProvider.filter).toBe('beta');
+      box.accept();
+      expect(explorer.goTestProvider.filter).toBe('beta');
+    });
+
+    it('puts back the previous filter on Escape', async () => {
+      explorer.goTestProvider.filter = 'alpha';
+      const box = await openBox();
+      box.type('gamma');
+      box.cancel();
+      expect(explorer.goTestProvider.filter).toBe('alpha');
+    });
+  });
+
   it('matches a finished test to its own package', async () => {
     const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestSame']);
     const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestSame']);
