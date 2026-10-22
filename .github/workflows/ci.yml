@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: 'npm'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
       - run: npm ci
       - run: npm run lint
       - run: npm test
