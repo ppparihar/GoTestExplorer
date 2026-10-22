@@ -16,6 +16,8 @@
  * be shown to the user without parsing the text.
  */
 
+import { BoundedLines, MAX_PACKAGE_LINES, MAX_RUN_LINES, MAX_TEST_LINES } from './boundedLines';
+
 /** A single event from `go test -json`. */
 export interface GoTestEvent {
   /** What happened: `start`, `run`, `pass`, `fail`, `skip`, `output`, `build-output` or `build-fail`. */
@@ -59,7 +61,7 @@ interface PendingOutcome {
   name: string;
   action: TestAction;
   elapsed: number;
-  output: string[];
+  output: BoundedLines;
 }
 
 /**
@@ -68,7 +70,7 @@ interface PendingOutcome {
 interface PackageBuilder {
   package: string;
   tests: Map<string, PendingOutcome>;
-  output: string[];
+  output: BoundedLines;
   failed: boolean;
   buildFailed: boolean;
   /** The names of the tests that have failed so far. */
@@ -152,7 +154,7 @@ export class GoTestJsonParser {
   private readonly packages = new Map<string, PackageBuilder>();
 
   /** The ordinary output of the run. */
-  private readonly outputLines: string[] = [];
+  private readonly outputLines = new BoundedLines(MAX_RUN_LINES);
 
   /** The build errors of the run. */
   private readonly buildOutputLines: string[] = [];
@@ -214,7 +216,13 @@ export class GoTestJsonParser {
       const tests = new Map<string, TestOutcome>();
       const failedTests: string[] = [];
 
-      builder.tests.forEach((outcome, testName) => {
+      builder.tests.forEach((pending, testName) => {
+        const outcome: TestOutcome = {
+          name: pending.name,
+          action: pending.action,
+          elapsed: pending.elapsed,
+          output: pending.output.toArray(),
+        };
         tests.set(testName, outcome);
         if (outcome.action === 'fail') {
           failedTests.push(testName);
@@ -229,7 +237,7 @@ export class GoTestJsonParser {
         package: name,
         tests,
         failedTests,
-        output: builder.output.slice(),
+        output: builder.output.toArray(),
         failed: builder.failed,
         buildFailed: builder.buildFailed,
       });
@@ -237,7 +245,7 @@ export class GoTestJsonParser {
 
     return {
       packages,
-      output: this.outputLines.slice(),
+      output: this.outputLines.toArray(),
       buildOutput: this.buildOutputLines.slice(),
       failedPackages,
       buildFailed: this.buildFailed,
@@ -254,7 +262,7 @@ export class GoTestJsonParser {
       // Not an event, so it is output the tool printed on its own. It is
       // kept, so that a run whose output is not JSON still shows what
       // was printed.
-      this.outputLines.push(line);
+      this.outputLines.add(line);
       output.push(line);
       return;
     }
@@ -262,13 +270,13 @@ export class GoTestJsonParser {
     switch (event.Action) {
       case 'output': {
         const lines = splitLines(event.Output);
-        this.outputLines.push(...lines);
+        this.outputLines.addAll(lines);
         output.push(...lines);
         if (event.Package) {
-          this.packageFor(event.Package).output.push(...lines);
+          this.packageFor(event.Package).output.addAll(lines);
         }
         if (event.Test && event.Package) {
-          this.outcomeFor(event.Package, event.Test).output.push(...lines);
+          this.outcomeFor(event.Package, event.Test).output.addAll(lines);
         }
         return;
       }
@@ -343,7 +351,7 @@ export class GoTestJsonParser {
         // so the failures are known by now.
         passed: !hasFailed(pkg.failedNames, name),
         elapsed: outcome.elapsed,
-        output: outcome.output.slice(),
+        output: outcome.output.toArray(),
       });
     } catch {
       // The outcome is still part of the result of the run.
@@ -360,7 +368,7 @@ export class GoTestJsonParser {
       pkg = {
         package: name,
         tests: new Map(),
-        output: [],
+        output: new BoundedLines(MAX_PACKAGE_LINES),
         failed: false,
         buildFailed: false,
         failedNames: [],
@@ -377,7 +385,7 @@ export class GoTestJsonParser {
     const pkg = this.packageFor(packageName);
     let outcome = pkg.tests.get(name);
     if (!outcome) {
-      outcome = { name, action: 'run', elapsed: 0, output: [] };
+      outcome = { name, action: 'run', elapsed: 0, output: new BoundedLines(MAX_TEST_LINES) };
       pkg.tests.set(name, outcome);
     }
     return outcome;

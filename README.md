@@ -17,7 +17,7 @@ Run and explore Go tests in a tree view inside Visual Studio Code.
 - The [Go extension](https://marketplace.visualstudio.com/items?itemName=golang.go) is optional
 
 ## Configuration
-See the extension settings for `goTestExplorer.*`: `maxParallelTests`, `skipFolders`, `goPath`, `goBinary`, `testFlags`, `buildTags`, `timeout`, `envFile`, `env`, `runInTerminal`.
+See the extension settings for `goTestExplorer.*`: `maxParallelTests`, `maxPackagesPerRun`, `skipFolders`, `goPath`, `goBinary`, `testFlags`, `buildTags`, `timeout`, `envFile`, `env`, `runInTerminal`.
 
 ## Development
 ```bash

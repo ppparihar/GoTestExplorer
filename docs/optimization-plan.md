@@ -346,6 +346,29 @@ end of the run still reports the suite and the tests that never reported
 already shown, which also keeps each test's own output instead of the output of
 the whole package.
 
+**Hardening for large repositories.** Measured on a macOS arm64 machine, with
+the numbers of the run that found them:
+
+- A run that could not start hung for ever. `spawn` threw `E2BIG` with about
+  30,000 packages on macOS, a spread of a very long argument list overflowed the
+  stack, and the process had no `error` handler, so the run's promise stayed
+  pending and the queue slot and the tree spinner never ended. Every one of these
+  now ends the run as a failure (`runGoTest.test.ts`, "cannot be started").
+- "Run All" names every package of a module on the command line, and Windows
+  accepts about 32,000 characters, which is roughly 1,200 packages. A module
+  is now split into runs by the length of its package arguments (8,000 characters
+  on Windows, 100,000 elsewhere), or by `goTestExplorer.maxPackagesPerRun`. A
+  module that fits is still one process, so the packages are compiled once. The
+  runs follow one another, because the tool already uses the cores, the outcome
+  of each test is shown as its run reports it, and a cancel stops the runs that
+  have not started.
+- The parser held every line of output, three times over: about 2.3 times the
+  size of the output (a 34 MB run held 74 MB), and without a limit for a test
+  that logs in a loop (2 million lines, 174 MB, held 393 MB). The output of a
+  test, a package and a run is now bounded to 1,000, 5,000 and 20,000 lines,
+  keeping the first tenth and the last lines with a marker for what was dropped
+  (the same run holds 5 MB). The terminal still receives every line.
+
 **3d. Cancellation** — `src/lib/testUtil.ts:16` exposes `runningTestProcesses`; wire a "Cancel Test Run" command and `CancellationToken` support, killing the child process tree. — **Done**
 
 **Done.** The command `goTestExplorer.cancelTestRun` (in the title bar of the
