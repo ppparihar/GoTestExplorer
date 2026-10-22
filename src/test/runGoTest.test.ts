@@ -359,8 +359,10 @@ async function waitFor(condition: () => boolean, timeoutMs: number): Promise<boo
  */
 function testBinaryRunning(): boolean {
   try {
-    const listing = cp.execFileSync('ps', ['-eo', 'comm']).toString();
-    return listing.split('\n').some((line) => line.trim().endsWith('gotestexplorerfixture.test'));
+    const listing = cp.execFileSync('ps', ['-eo', 'args']).toString();
+    return listing
+      .split('\n')
+      .some((line) => line.trim().split(' ')[0].endsWith('gotestexplorerfixture.test'));
   } catch {
     return false;
   }
