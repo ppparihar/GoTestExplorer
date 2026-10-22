@@ -132,6 +132,11 @@
         "menus": {
             "view/title": [
                 {
+                    "command": "goTestExplorer.setBuildTags",
+                    "when": "view == goTestExplorer",
+                    "group": "9_tags@1"
+                },
+                {
                     "command": "goTestExplorer.showCoverage",
                     "when": "view == goTestExplorer && !goTestExplorer.coverageEnabled",
                     "group": "navigation@6"
@@ -193,6 +198,10 @@
             ]
         },
         "commands": [
+            {
+                "command": "goTestExplorer.setBuildTags",
+                "title": "Set Build Tags..."
+            },
             {
                 "command": "goTestExplorer.showCoverage",
                 "title": "Show Code Coverage",

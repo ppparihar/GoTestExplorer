@@ -7,6 +7,8 @@ import { CoverageDecorations } from './coverageDecorations';
 import { CoverBlock, CoverProfile } from './lib/coverageProfile';
 import { TestStatus } from './lib/testFilter';
 import { Config } from './config';
+import { parseTags } from './lib/buildConstraint';
+import { buildTags } from './lib/settings';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { RawTestResult } from './rawTestResult';
@@ -142,6 +144,22 @@ export class GoTestExplorer {
       vscode.commands.registerCommand('goTestExplorer.hideCoverage', () => this.setCoverage(false)),
     );
     this.setCoverage(false);
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        'goTestExplorer.setBuildTags',
+        this.onSetBuildTags.bind(this),
+      ),
+    );
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (
+          event.affectsConfiguration('goTestExplorer.buildTags') ||
+          event.affectsConfiguration('go.buildTags')
+        ) {
+          this.updateMessage();
+        }
+      }),
+    );
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.expandAll', this.onExpandAll.bind(this)),
     );
@@ -414,6 +432,32 @@ export class GoTestExplorer {
   }
 
   /**
+   * Asks for the build tags the tests are run with, and keeps them in the
+   * settings of the workspace, where the run and the tree read them.
+   */
+  private async onSetBuildTags() {
+    const input = await vscode.window.showInputBox({
+      title: 'Build tags',
+      prompt:
+        'The tags that go test runs with (-tags), separated by commas, for example functional,integration. Leave it empty for none.',
+      value: buildTags(),
+    });
+    if (input === undefined) {
+      return;
+    }
+    const tags = Array.from(parseTags(input)).join(',');
+    const inWorkspace = (vscode.workspace.workspaceFolders ?? []).length > 0;
+    await vscode.workspace
+      .getConfiguration('goTestExplorer')
+      .update(
+        'buildTags',
+        tags,
+        inWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global,
+      );
+    this.updateMessage();
+  }
+
+  /**
    * Expands every file that is shown.
    *
    * The view has one button for expanding and collapsing: this is the one it
@@ -499,7 +543,11 @@ export class GoTestExplorer {
    * the state of the view can be read without guessing from its buttons.
    */
   private updateMessage() {
-    const lines = [this.filterMessage];
+    const tags = Array.from(parseTags(buildTags()));
+    const lines = [
+      this.filterMessage,
+      tags.length > 0 ? `Build tags: ${tags.join(', ')}` : undefined,
+    ];
     if (this.coverageEnabled) {
       lines.push('Coverage is on. Green lines ran, red lines did not.');
     }
@@ -536,6 +584,10 @@ export class GoTestExplorer {
     this.enqueueTest(testConfig);
   }
   private runTestSuite(testNode: TestNode) {
+    // The build tags that are set leave this file out, so nothing would run.
+    if (this.goTestProvider.isExcluded(testNode)) {
+      return;
+    }
     // A filter narrows the suite to the tests that are shown.
     const children = this.goTestProvider.visibleChildrenOf(testNode);
     if (children.length === 0) {
@@ -564,7 +616,11 @@ export class GoTestExplorer {
         .forEach((suite) => this.runTestSuite(suite));
       return;
     }
-    const suites = this.goTestProvider.discoveredTests.filter((s) => s.isTestSuite);
+    // A file that the build tags leave out is not run: `go test` skips it, and
+    // its tests would be shown as passed without having run.
+    const suites = this.goTestProvider.discoveredTests.filter(
+      (s) => s.isTestSuite && !this.goTestProvider.isExcluded(s),
+    );
     const groups = new Map<string, ModuleGroup>();
     const withoutModule: TestNode[] = [];
 

@@ -17,6 +17,8 @@ export interface DiscoveredSuite {
   readonly confident: boolean;
   /** Why the file could not be scanned with confidence. */
   readonly reason?: string;
+  /** The build constraint of the file, when it has one. */
+  readonly constraint?: string;
 }
 
 /** How discovery should be carried out. */
@@ -65,6 +67,7 @@ export async function discoverTests(
           declarations: scan.declarations,
           confident: scan.confident,
           reason: scan.reason,
+          constraint: scan.constraint,
         };
       } catch {
         // The file was deleted between the walk and the read, so it is

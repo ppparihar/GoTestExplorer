@@ -238,3 +238,17 @@ describe('scanGoSource', () => {
     expect(result.declarations[0].startChar).toBe(5);
   });
 });
+
+describe('scanGoSource build constraints', () => {
+  it('reads the build constraint of a file', () => {
+    const scan = scanGoSource(
+      '//go:build functional\n\npackage x\n\nfunc TestA(t *testing.T) {}\n',
+    );
+    expect(scan.constraint).toBe('functional');
+    expect(scan.declarations.map((d) => d.name)).toEqual(['TestA']);
+  });
+
+  it('has none for a file without one', () => {
+    expect(scanGoSource('package x\n').constraint).toBeUndefined();
+  });
+});

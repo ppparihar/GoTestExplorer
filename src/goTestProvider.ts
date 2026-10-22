@@ -4,7 +4,8 @@ import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { Config } from './config';
-import { showFilesWithoutTests } from './lib/settings';
+import { buildTags, showFilesWithoutTests } from './lib/settings';
+import { isExcluded, parseTags } from './lib/buildConstraint';
 import { isActive, TestFilter, TestStatus, visibleChildren, visibleSuites } from './lib/testFilter';
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
@@ -46,7 +47,11 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     context.subscriptions.push({ dispose: () => this.cancelPendingOutcomes() });
     context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('goTestExplorer.showFilesWithoutTests')) {
+        if (
+          event.affectsConfiguration('goTestExplorer.showFilesWithoutTests') ||
+          event.affectsConfiguration('goTestExplorer.buildTags') ||
+          event.affectsConfiguration('go.buildTags')
+        ) {
           this.refresh();
         }
       }),
@@ -118,6 +123,9 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     if (testNode.isEmptyFile && !this._discovering) {
       return this.emptyFileItem(testNode, treeItem);
     }
+    if (!this._discovering && this.isExcluded(testNode)) {
+      return this.excludedFileItem(testNode, treeItem);
+    }
 
     if (testNode.isTestSuite) {
       treeItem.description = this._fileCoverage(testNode);
@@ -145,6 +153,44 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   }
 
   /**
+   * Whether `go test` leaves the file out, with the build tags that are set.
+   * Its tests do not run, and a run that names them reports "no tests to
+   * run", which would read as a pass.
+   */
+  isExcluded(testNode: TestNode): boolean {
+    return (
+      testNode.isFile &&
+      isExcluded(
+        { name: path.basename(testNode.uri.fsPath), constraint: testNode.constraint },
+        parseTags(buildTags(testNode.uri)),
+      )
+    );
+  }
+
+  /**
+   * The row of a test file that the build tags leave out.
+   *
+   * It says why, and what would bring it back. It has no run button, its tests
+   * are not listed, and a click opens the file.
+   */
+  private excludedFileItem(testNode: TestNode, treeItem: vscode.TreeItem): vscode.TreeItem {
+    treeItem.collapsibleState = vscode.TreeItemCollapsibleState.None;
+    treeItem.contextValue = 'excludedTestFile';
+    treeItem.description = 'needs build tags';
+    treeItem.tooltip =
+      (testNode.constraint ? `//go:build ${testNode.constraint}\n` : '') +
+      'go test leaves this file out with the build tags that are set, so its tests do not run. ' +
+      'Set the build tags to include it.';
+    treeItem.iconPath = new vscode.ThemeIcon('circle-slash');
+    treeItem.command = {
+      command: 'vscode.open',
+      title: 'Open file',
+      arguments: [testNode.uri],
+    };
+    return treeItem;
+  }
+
+  /**
    * The row of a test file that holds no test function.
    *
    * It is not a test: it has no run button, and a click opens the file
@@ -168,7 +214,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
   getChildren(testNode?: TestNode): Thenable<TestNode[]> {
     if (testNode) {
-      return Promise.resolve(this.visibleChildrenOf(testNode));
+      return Promise.resolve(this.isExcluded(testNode) ? [] : this.visibleChildrenOf(testNode));
     }
     if (this._discovering) {
       return Promise.resolve([new TestNode('Loading...', null)]);
