@@ -108,11 +108,29 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     const suite = this.__discoveredTestsMap.get(
       this.getNodeKey(testResult.uri.fsPath, path.basename(testResult.uri.fsPath)),
     );
+    if (suite) {
+      this.endSuiteSpinnerWhenDone(suite);
+    }
     const node =
       suite ??
       this.__discoveredTestsMap.get(this.getNodeKey(testResult.uri.fsPath, testResult.testName));
     if (node) {
       this.refresh(node);
+    }
+  }
+
+  /**
+   * Ends the spinner of a suite once none of its tests is running.
+   *
+   * A suite is marked as running when its run starts, and the result of the
+   * suite arrives only when the whole run has finished. Without this, a suite
+   * whose tests have all finished would keep spinning until the slowest part of
+   * the run was over. Its icon then follows its tests: passed, or failed when
+   * one of them failed.
+   */
+  private endSuiteSpinnerWhenDone(suite: TestNode) {
+    if (suite.isLoading && !suite.children.some((child) => child.isLoading)) {
+      suite.loadingCompleted();
     }
   }
   private onDiscoverTestStart() {

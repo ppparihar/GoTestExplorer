@@ -5,6 +5,7 @@ import { GoTestProvider } from '../goTestProvider';
 import { TestNode } from '../testNode';
 import { TestResult } from '../testResult';
 import { Uri } from './mocks/vscode';
+import { Icons } from '../icons';
 
 const fileUri = Uri.file('/repo/alpha_test.go');
 
@@ -297,5 +298,77 @@ describe('GoTestProvider shows a test as soon as it finishes', () => {
 
     expect(suite.children[0].isLoading).toBe(false);
     expect(suite.children[1].isLoading).toBe(true);
+  });
+});
+
+describe('GoTestProvider ends the spinner of a suite when its last test finishes', () => {
+  let commands: Commands;
+  let provider: GoTestProvider;
+  let suite: TestNode;
+
+  beforeEach(() => {
+    commands = new Commands();
+    provider = new GoTestProvider(fakeContext(), commands);
+    suite = new TestNode('alpha_test.go', fileUri, [
+      new TestNode('TestOne', fileUri),
+      new TestNode('TestTwo', fileUri),
+    ]);
+    commands.sendDiscoveredTests([suite]);
+    // A run of the whole suite marks every test and the suite itself as running.
+    commands.sendTestRunStarted([...suite.children, suite]);
+  });
+
+  it('keeps the suite running while one of its tests is still running', () => {
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestOne', true, []));
+
+    expect(suite.icon).toBe(Icons.loading);
+  });
+
+  it('shows the suite as passed as soon as its last test has passed', () => {
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestOne', true, []));
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestTwo', true, []));
+
+    // The run has not finished: no result of the suite has arrived.
+    expect(suite.isLoading).toBe(false);
+    expect(suite.icon).toBe(Icons.testSuitePassed);
+  });
+
+  it('shows the suite as failed as soon as its last test is done, if one failed', () => {
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestOne', false, []));
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestTwo', true, []));
+
+    expect(suite.icon).toBe(Icons.testSuiteFailed);
+  });
+
+  it('does not depend on the order the tests finish in', () => {
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestTwo', true, []));
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestOne', true, []));
+
+    expect(suite.icon).toBe(Icons.testSuitePassed);
+  });
+
+  it('leaves another suite that is still running alone', () => {
+    const otherUri = Uri.file('/repo/beta_test.go');
+    const other = new TestNode('beta_test.go', otherUri, [new TestNode('TestBeta', otherUri)]);
+    commands.sendDiscoveredTests([suite, other]);
+    commands.sendTestRunStarted([...suite.children, suite, ...other.children, other]);
+
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestOne', true, []));
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestTwo', true, []));
+
+    expect(suite.icon).toBe(Icons.testSuitePassed);
+    expect(other.icon).toBe(Icons.loading);
+  });
+
+  it('redraws the suite so the new icon shows', () => {
+    const redrawn: (TestNode | undefined)[] = [];
+    provider.onDidChangeTreeData((node) => {
+      redrawn.push(node);
+    });
+
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestOne', true, []));
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestTwo', true, []));
+
+    expect(redrawn[redrawn.length - 1]).toBe(suite);
   });
 });
