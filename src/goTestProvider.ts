@@ -4,6 +4,7 @@ import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { Config } from './config';
+import { visibleChildren, visibleSuites } from './lib/testFilter';
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<
@@ -15,6 +16,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private __discoveredTestsMap: Map<string, TestNode> = new Map();
   private _discoveredTests: TestNode[] = [];
   private _discovering: boolean;
+  private _filter = '';
   /**
    * The nodes whose result changed since the tree was last redrawn.
    */
@@ -111,13 +113,39 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
   getChildren(testNode?: TestNode): Thenable<TestNode[]> {
     if (testNode) {
-      return Promise.resolve(testNode.children);
+      return Promise.resolve(this.visibleChildrenOf(testNode));
     }
     if (this._discovering) {
       return Promise.resolve([new TestNode('Loading...', null)]);
     }
-    return Promise.resolve(this._discoveredTests);
+    return Promise.resolve(this.visibleTests);
   }
+
+  /**
+   * The search text the tree is narrowed to. Empty means every test is shown.
+   */
+  get filter(): string {
+    return this._filter;
+  }
+  set filter(text: string) {
+    this._filter = text.trim();
+    this.refresh();
+  }
+
+  /**
+   * The files that are shown for the search text.
+   */
+  get visibleTests(): TestNode[] {
+    return visibleSuites(this._discoveredTests, this._filter);
+  }
+
+  /**
+   * The tests of a file that are shown for the search text.
+   */
+  visibleChildrenOf(suite: TestNode): TestNode[] {
+    return this._filter ? visibleChildren(suite, this._filter) : suite.children;
+  }
+
   get discoveredTests(): TestNode[] {
     return this._discoveredTests;
   }

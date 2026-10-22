@@ -35,6 +35,7 @@ interface ModuleGroup {
 
 export class GoTestExplorer {
   goTestProvider: GoTestProvider;
+  private readonly treeView: vscode.TreeView<TestNode>;
 
   readonly commands: Commands;
   private readonly testQueue: TestQueue;
@@ -61,7 +62,10 @@ export class GoTestExplorer {
       (testConfig, result) => this.onRunCompleted(testConfig, result),
       (testConfig, error) => this.onRunFailed(testConfig, error),
     );
-    vscode.window.registerTreeDataProvider('goTestExplorer', this.goTestProvider);
+    this.treeView = vscode.window.createTreeView('goTestExplorer', {
+      treeDataProvider: this.goTestProvider,
+    });
+    context.subscriptions.push(this.treeView);
 
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.runTest', this.onRunSingleTest.bind(this)),
@@ -73,6 +77,12 @@ export class GoTestExplorer {
       vscode.commands.registerCommand('goTestExplorer.refreshTestExplorer', () => {
         testDiscoverer.discoverAllTests();
       }),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.filterTests', this.onFilterTests.bind(this)),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.clearFilter', () => this.setFilter('')),
     );
     const cancelTestRun = () => {
       // The invocations that have not started are dropped, and the ones
@@ -107,19 +117,44 @@ export class GoTestExplorer {
     );
     testDiscoverer.discoverAllTests();
   }
+  /**
+   * Asks for the text the tests are narrowed to.
+   */
+  private async onFilterTests() {
+    const text = await vscode.window.showInputBox({
+      title: 'Filter tests',
+      prompt: 'Show only the tests whose name, or whose file name, has all of these words',
+      value: this.goTestProvider.filter,
+    });
+    if (text !== undefined) {
+      this.setFilter(text);
+    }
+  }
+
+  private setFilter(text: string) {
+    this.goTestProvider.filter = text;
+    const active = this.goTestProvider.filter !== '';
+    this.treeView.message = active
+      ? `Filter: ${this.goTestProvider.filter}. Run All runs only the matching tests.`
+      : undefined;
+    vscode.commands.executeCommand('setContext', 'goTestExplorer.filterActive', active);
+  }
+
   async onRunSingleTest(testNode: TestNode) {
     this.commands.sendTestRunStarted([testNode]);
     const testConfig = this.buildTestConfig(testNode);
     this.enqueueTest(testConfig);
   }
   private runTestSuite(testNode: TestNode) {
-    if (testNode.children.length === 0) {
+    // A filter narrows the suite to the tests that are shown.
+    const children = this.goTestProvider.visibleChildrenOf(testNode);
+    if (children.length === 0) {
       return;
     }
     // Every test of the suite is reported in one event, so the tree is
     // redrawn once for the whole suite.
-    this.commands.sendTestRunStarted([...testNode.children, testNode]);
-    const testConfig = this.buildTestConfig(testNode);
+    this.commands.sendTestRunStarted([...children, testNode]);
+    const testConfig = this.buildTestConfig(testNode, children);
     this.enqueueTest(testConfig);
   }
 
@@ -131,6 +166,14 @@ export class GoTestExplorer {
    * and the tool decides how to spread them over the available cores.
    */
   private onRunAllTests() {
+    if (this.goTestProvider.filter) {
+      // A run of a module has no filter on the names of its tests, so only
+      // the files that are shown are run, each with the tests that are shown.
+      this.goTestProvider.visibleTests
+        .filter((s) => s.isTestSuite)
+        .forEach((suite) => this.runTestSuite(suite));
+      return;
+    }
     const suites = this.goTestProvider.discoveredTests.filter((s) => s.isTestSuite);
     const groups = new Map<string, ModuleGroup>();
     const withoutModule: TestNode[] = [];
@@ -198,8 +241,8 @@ export class GoTestExplorer {
     this.enqueueTest(testConfig);
   }
 
-  private buildTestConfig(testNode: TestNode): TestConfig {
-    let tests = testNode.children.map((node) => node.name);
+  private buildTestConfig(testNode: TestNode, children = testNode.children): TestConfig {
+    let tests = children.map((node) => node.name);
     tests = tests.length > 0 ? tests : [testNode.name];
     const testConfig: TestConfig = {
       dir: path.dirname(testNode.uri.fsPath),

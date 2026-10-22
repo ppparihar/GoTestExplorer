@@ -330,6 +330,19 @@ describe('GoTestExplorer runs a whole module', () => {
     expect(config.packages.map((p: { path: string }) => p.path)).toEqual(['pkg/a', 'pkg/b']);
   });
 
+  it('runs only the tests that match the filter when Run All is used', async () => {
+    const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha', 'TestBeta']);
+    const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestGamma']);
+    explorer.commands.sendDiscoveredTests([a, b]);
+    explorer.goTestProvider.filter = 'beta';
+
+    await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+    await waitFor(() => runGoTest.mock.calls.length > 0);
+
+    expect(runGoTest.mock.calls.length).toBe(1);
+    expect(runGoTest.mock.calls[0][0].functions).toEqual(['TestBeta']);
+  });
+
   it('matches a finished test to its own package', async () => {
     const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestSame']);
     const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestSame']);

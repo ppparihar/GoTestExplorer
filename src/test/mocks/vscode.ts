@@ -667,6 +667,12 @@ export const window = {
     __state.terminals.push(terminal);
     return terminal;
   },
+  createTreeView(_id: string, _options: unknown): { message?: string; dispose(): void } {
+    return { dispose(): void {} };
+  },
+  showInputBox(): Promise<string | undefined> {
+    return Promise.resolve(undefined);
+  },
   registerTreeDataProvider(_id: string, _provider: unknown): Disposable {
     return new Disposable();
   },

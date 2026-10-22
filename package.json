@@ -127,6 +127,16 @@
         "menus": {
             "view/title": [
                 {
+                    "command": "goTestExplorer.filterTests",
+                    "when": "view == goTestExplorer && !goTestExplorer.filterActive",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "goTestExplorer.clearFilter",
+                    "when": "view == goTestExplorer && goTestExplorer.filterActive",
+                    "group": "navigation@3"
+                },
+                {
                     "command": "goTestExplorer.refreshTestExplorer",
                     "when": "view == goTestExplorer",
                     "group": "navigation@1"
@@ -158,6 +168,16 @@
             ]
         },
         "commands": [
+            {
+                "command": "goTestExplorer.filterTests",
+                "title": "Filter Tests",
+                "icon": "$(filter)"
+            },
+            {
+                "command": "goTestExplorer.clearFilter",
+                "title": "Clear Filter",
+                "icon": "$(filter-filled)"
+            },
             {
                 "command": "goTestExplorer.cancelTestRun",
                 "title": "Cancel Test Run",
