@@ -20,25 +20,29 @@ const goSection = 'go';
  * of this extension is the last resort. The most specific scope wins, so a
  * setting made for one folder beats one made for the whole workspace.
  */
-export function userSetValue<T>(inspected: {
-	defaultValue?: T;
-	globalValue?: T;
-	workspaceValue?: T;
-	workspaceFolderValue?: T;
-} | undefined): T | undefined {
-	if (!inspected) {
-		return undefined;
-	}
-	if (inspected.workspaceFolderValue !== undefined) {
-		return inspected.workspaceFolderValue;
-	}
-	if (inspected.workspaceValue !== undefined) {
-		return inspected.workspaceValue;
-	}
-	if (inspected.globalValue !== undefined) {
-		return inspected.globalValue;
-	}
-	return undefined;
+export function userSetValue<T>(
+  inspected:
+    | {
+        defaultValue?: T;
+        globalValue?: T;
+        workspaceValue?: T;
+        workspaceFolderValue?: T;
+      }
+    | undefined,
+): T | undefined {
+  if (!inspected) {
+    return undefined;
+  }
+  if (inspected.workspaceFolderValue !== undefined) {
+    return inspected.workspaceFolderValue;
+  }
+  if (inspected.workspaceValue !== undefined) {
+    return inspected.workspaceValue;
+  }
+  if (inspected.globalValue !== undefined) {
+    return inspected.globalValue;
+  }
+  return undefined;
 }
 
 /**
@@ -56,42 +60,52 @@ export function userSetValue<T>(inspected: {
  * @param defaultValue the value to use when neither extension has a value.
  * @param resource the file the settings are resolved against.
  */
-export function readSetting<T>(key: string, goKey: string | undefined, defaultValue: T, resource?: vscode.Uri): T {
-	const own = vscode.workspace.getConfiguration(ownSection, resource);
-	const ownValue = userSetValue(own.inspect<T>(key));
-	if (ownValue !== undefined) {
-		return ownValue;
-	}
-	if (goKey !== undefined) {
-		const goValue = vscode.workspace.getConfiguration(goSection, resource).get<T>(goKey);
-		if (goValue !== undefined) {
-			return goValue;
-		}
-	}
-	return defaultValue;
+export function readSetting<T>(
+  key: string,
+  goKey: string | undefined,
+  defaultValue: T,
+  resource?: vscode.Uri,
+): T {
+  const own = vscode.workspace.getConfiguration(ownSection, resource);
+  const ownValue = userSetValue(own.inspect<T>(key));
+  if (ownValue !== undefined) {
+    return ownValue;
+  }
+  if (goKey !== undefined) {
+    const goValue = vscode.workspace.getConfiguration(goSection, resource).get<T>(goKey);
+    if (goValue !== undefined) {
+      return goValue;
+    }
+  }
+  return defaultValue;
 }
 
 /**
  * The number of test runs that are allowed to be in flight at the same time.
  */
 export function maxParallelTests(resource?: vscode.Uri): number {
-	const value = readSetting<number>('maxParallelTests', undefined, Config.RunMaxParallelTest, resource);
-	if (typeof value !== 'number' || !isFinite(value) || value < 1) {
-		return Config.RunMaxParallelTest;
-	}
-	return Math.floor(value);
+  const value = readSetting<number>(
+    'maxParallelTests',
+    undefined,
+    Config.RunMaxParallelTest,
+    resource,
+  );
+  if (typeof value !== 'number' || !isFinite(value) || value < 1) {
+    return Config.RunMaxParallelTest;
+  }
+  return Math.floor(value);
 }
 
 /**
  * The names of the folders that are never walked while looking for test files.
  */
 export function skipFolders(resource?: vscode.Uri): string[] {
-	const value = readSetting<string[]>('skipFolders', undefined, Config.SkipFolders, resource);
-	if (!Array.isArray(value)) {
-		return Config.SkipFolders;
-	}
-	const names = value.filter(name => typeof name === 'string' && name.trim() !== '');
-	return names.length > 0 ? names : Config.SkipFolders;
+  const value = readSetting<string[]>('skipFolders', undefined, Config.SkipFolders, resource);
+  if (!Array.isArray(value)) {
+    return Config.SkipFolders;
+  }
+  const names = value.filter((name) => typeof name === 'string' && name.trim() !== '');
+  return names.length > 0 ? names : Config.SkipFolders;
 }
 
 /**
@@ -100,8 +114,8 @@ export function skipFolders(resource?: vscode.Uri): string[] {
  * The GOPATH of the Go extension is used when the user has not set one here.
  */
 export function goPath(resource?: vscode.Uri): string {
-	const value = readSetting<string>('goPath', 'gopath', Config.DefaultGoPath, resource);
-	return typeof value === 'string' ? value : Config.DefaultGoPath;
+  const value = readSetting<string>('goPath', 'gopath', Config.DefaultGoPath, resource);
+  return typeof value === 'string' ? value : Config.DefaultGoPath;
 }
 
 /**
@@ -111,27 +125,27 @@ export function goPath(resource?: vscode.Uri): string {
  * set when the binary is not where the lookup finds it.
  */
 export function goBinary(resource?: vscode.Uri): string {
-	const value = readSetting<string>('goBinary', undefined, Config.DefaultGoBinary, resource);
-	return typeof value === 'string' ? value : Config.DefaultGoBinary;
+  const value = readSetting<string>('goBinary', undefined, Config.DefaultGoBinary, resource);
+  return typeof value === 'string' ? value : Config.DefaultGoBinary;
 }
 
 /**
  * The flags that are added to the go test command.
  */
 export function testFlags(resource?: vscode.Uri): string[] {
-	const value = readSetting<string[]>('testFlags', 'testFlags', Config.DefaultTestFlags, resource);
-	if (!Array.isArray(value)) {
-		return Config.DefaultTestFlags;
-	}
-	return value.filter(flag => typeof flag === 'string');
+  const value = readSetting<string[]>('testFlags', 'testFlags', Config.DefaultTestFlags, resource);
+  if (!Array.isArray(value)) {
+    return Config.DefaultTestFlags;
+  }
+  return value.filter((flag) => typeof flag === 'string');
 }
 
 /**
  * The build tags of a run.
  */
 export function buildTags(resource?: vscode.Uri): string {
-	const value = readSetting<string>('buildTags', 'buildTags', Config.DefaultBuildTags, resource);
-	return typeof value === 'string' ? value : Config.DefaultBuildTags;
+  const value = readSetting<string>('buildTags', 'buildTags', Config.DefaultBuildTags, resource);
+  return typeof value === 'string' ? value : Config.DefaultBuildTags;
 }
 
 /**
@@ -142,50 +156,55 @@ export function buildTags(resource?: vscode.Uri): string {
  * "undefined" as a duration, which would fail every test.
  */
 export function timeout(resource?: vscode.Uri): string {
-	return resolveTestTimeout(readSetting<unknown>('timeout', 'testTimeout', undefined, resource));
+  return resolveTestTimeout(readSetting<unknown>('timeout', 'testTimeout', undefined, resource));
 }
 
 /**
  * The file that holds the environment variables of a run.
  */
 export function envFile(resource?: vscode.Uri): string {
-	const value = readSetting<string>('envFile', 'testEnvFile', Config.DefaultEnvFile, resource);
-	return typeof value === 'string' ? value : Config.DefaultEnvFile;
+  const value = readSetting<string>('envFile', 'testEnvFile', Config.DefaultEnvFile, resource);
+  return typeof value === 'string' ? value : Config.DefaultEnvFile;
 }
 
 /**
  * The environment variables of a run.
  */
 export function env(resource?: vscode.Uri): { [key: string]: string } {
-	const value = readSetting<{ [key: string]: string }>('env', 'testEnvVars', Config.DefaultEnv, resource);
-	if (!value || typeof value !== 'object') {
-		return Config.DefaultEnv;
-	}
-	return value;
+  const value = readSetting<{ [key: string]: string }>(
+    'env',
+    'testEnvVars',
+    Config.DefaultEnv,
+    resource,
+  );
+  if (!value || typeof value !== 'object') {
+    return Config.DefaultEnv;
+  }
+  return value;
 }
 
 /**
  * Whether the output of a run goes to a terminal.
  */
 export function runInTerminal(resource?: vscode.Uri): boolean {
-	const value = readSetting<boolean>('runInTerminal', undefined, Config.RunInTerminal, resource);
-	return typeof value === 'boolean' ? value : Config.RunInTerminal;
+  const value = readSetting<boolean>('runInTerminal', undefined, Config.RunInTerminal, resource);
+  return typeof value === 'boolean' ? value : Config.RunInTerminal;
 }
 
 /**
  * The settings that decide how a test run is carried out.
  */
 export interface RunSettings {
-	/** The build tags of the run. */
-	buildTags: string;
-	/** The flags that are added to the go test command. */
-	testFlags: string[];
-	/** The timeout of the run. */
-	timeout: string;
-	/** The file that holds the environment variables of the run. */
-	envFile: string;
-	/** The environment variables of the run. */
-	env: { [key: string]: string };
+  /** The build tags of the run. */
+  buildTags: string;
+  /** The flags that are added to the go test command. */
+  testFlags: string[];
+  /** The timeout of the run. */
+  timeout: string;
+  /** The file that holds the environment variables of the run. */
+  envFile: string;
+  /** The environment variables of the run. */
+  env: { [key: string]: string };
 }
 
 /**
@@ -195,11 +214,11 @@ export interface RunSettings {
  * settings of that file rather than of whichever file happens to be open.
  */
 export function runSettings(resource?: vscode.Uri): RunSettings {
-	return {
-		buildTags: buildTags(resource),
-		testFlags: testFlags(resource),
-		timeout: timeout(resource),
-		envFile: envFile(resource),
-		env: env(resource)
-	};
+  return {
+    buildTags: buildTags(resource),
+    testFlags: testFlags(resource),
+    timeout: timeout(resource),
+    envFile: envFile(resource),
+    env: env(resource),
+  };
 }

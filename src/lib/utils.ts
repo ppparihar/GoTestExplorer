@@ -6,72 +6,85 @@ import cp = require('child_process');
 import { parseEnvFile, resolveHomeDir } from './goPath';
 
 export function getToolsGopath(useCache: boolean = true): string {
-	if (!useCache || !toolsGopath) {
-		toolsGopath = resolveToolsGopath();
-	}
+  if (!useCache || !toolsGopath) {
+    toolsGopath = resolveToolsGopath();
+  }
 
-	return toolsGopath;
+  return toolsGopath;
 }
 
 function resolveToolsGopath(): string | undefined {
+  let toolsGopathForWorkspace = vscode.workspace.getConfiguration('go')['toolsGopath'] || '';
 
-	let toolsGopathForWorkspace = vscode.workspace.getConfiguration('go')['toolsGopath'] || '';
+  // In case of single root, use resolvePath to resolve ~ and ${workspaceRoot}
+  if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length <= 1) {
+    return resolvePath(toolsGopathForWorkspace);
+  }
 
-	// In case of single root, use resolvePath to resolve ~ and ${workspaceRoot}
-	if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length <= 1) {
-		return resolvePath(toolsGopathForWorkspace);
-	}
+  // In case of multi-root, resolve ~ and ignore ${workspaceRoot}
+  if (toolsGopathForWorkspace.startsWith('~')) {
+    toolsGopathForWorkspace = path.join(os.homedir(), toolsGopathForWorkspace.substr(1));
+  }
+  if (
+    toolsGopathForWorkspace &&
+    toolsGopathForWorkspace.trim() &&
+    !/\${workspaceRoot}/.test(toolsGopathForWorkspace)
+  ) {
+    return toolsGopathForWorkspace;
+  }
 
-	// In case of multi-root, resolve ~ and ignore ${workspaceRoot}
-	if (toolsGopathForWorkspace.startsWith('~')) {
-		toolsGopathForWorkspace = path.join(os.homedir(), toolsGopathForWorkspace.substr(1));
-	}
-	if (toolsGopathForWorkspace && toolsGopathForWorkspace.trim() && !/\${workspaceRoot}/.test(toolsGopathForWorkspace)) {
-		return toolsGopathForWorkspace;
-	}
-
-	// If any of the folders in multi root have toolsGopath set, use it.
-	for (let i = 0; i < vscode.workspace.workspaceFolders.length; i++) {
-		let toolsGopath = <string>vscode.workspace.getConfiguration('go', vscode.workspace.workspaceFolders[i].uri).inspect('toolsGopath').workspaceFolderValue;
-		toolsGopath = resolvePath(toolsGopath, vscode.workspace.workspaceFolders[i].uri.fsPath);
-		if (toolsGopath) {
-			return toolsGopath;
-		}
-	}
-	return undefined;
+  // If any of the folders in multi root have toolsGopath set, use it.
+  for (let i = 0; i < vscode.workspace.workspaceFolders.length; i++) {
+    let toolsGopath = <string>(
+      vscode.workspace
+        .getConfiguration('go', vscode.workspace.workspaceFolders[i].uri)
+        .inspect('toolsGopath').workspaceFolderValue
+    );
+    toolsGopath = resolvePath(toolsGopath, vscode.workspace.workspaceFolders[i].uri.fsPath);
+    if (toolsGopath) {
+      return toolsGopath;
+    }
+  }
+  return undefined;
 }
 /**
  * Exapnds ~ to homedir in non-Windows platform and resolves ${workspaceRoot}
  */
 export function resolvePath(inputPath: string, workspaceRoot?: string): string {
-	if (!inputPath || !inputPath.trim()) return inputPath;
+  if (!inputPath || !inputPath.trim()) return inputPath;
 
-	if (!workspaceRoot && vscode.workspace.workspaceFolders) {
-		if (vscode.workspace.workspaceFolders.length === 1) {
-			workspaceRoot = vscode.workspace.rootPath;
-		} else if (vscode.window.activeTextEditor && vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)) {
-			workspaceRoot = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri).uri.fsPath;
-		}
-	}
+  if (!workspaceRoot && vscode.workspace.workspaceFolders) {
+    if (vscode.workspace.workspaceFolders.length === 1) {
+      workspaceRoot = vscode.workspace.rootPath;
+    } else if (
+      vscode.window.activeTextEditor &&
+      vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)
+    ) {
+      workspaceRoot = vscode.workspace.getWorkspaceFolder(
+        vscode.window.activeTextEditor.document.uri,
+      ).uri.fsPath;
+    }
+  }
 
-	if (workspaceRoot) {
-		inputPath = inputPath.replace(/\${workspaceRoot}/g, workspaceRoot).replace(/\${workspaceFolder}/g, workspaceRoot);
-	}
-	return resolveHomeDir(inputPath);
+  if (workspaceRoot) {
+    inputPath = inputPath
+      .replace(/\${workspaceRoot}/g, workspaceRoot)
+      .replace(/\${workspaceFolder}/g, workspaceRoot);
+  }
+  return resolveHomeDir(inputPath);
 }
 
 /**
  * Exapnds ~ to homedir in non-Windows platform
  */
 export function killProcess(p: cp.ChildProcess) {
-	if (p) {
-		try {
-			p.kill();
-		} catch (e) {
-			console.log('Error killing process: ' + e);
-
-		}
-	}
+  if (p) {
+    try {
+      p.kill();
+    } catch (e) {
+      console.log('Error killing process: ' + e);
+    }
+  }
 }
 
 /**
@@ -85,26 +98,38 @@ export function killProcess(p: cp.ChildProcess) {
  * @param env the environment variables of the settings.
  * @param workspaceUri the file the environment is resolved against.
  */
-export function getTestEnvVars(envFile: string, env: { [key: string]: any }, workspaceUri?: vscode.Uri): any {
-	const envVars = getToolsEnvVars(workspaceUri);
-	const testEnvConfig = env || {};
+export function getTestEnvVars(
+  envFile: string,
+  env: { [key: string]: any },
+  workspaceUri?: vscode.Uri,
+): any {
+  const envVars = getToolsEnvVars(workspaceUri);
+  const testEnvConfig = env || {};
 
-	let fileEnv: { [key: string]: any } = {};
-	if (envFile) {
-		const file = resolvePath(envFile);
-		try {
-			fileEnv = parseEnvFile(file);
-		} catch (e) {
-			console.log(e);
-		}
-	}
+  let fileEnv: { [key: string]: any } = {};
+  if (envFile) {
+    const file = resolvePath(envFile);
+    try {
+      fileEnv = parseEnvFile(file);
+    } catch (e) {
+      console.log(e);
+    }
+  }
 
-	Object.keys(fileEnv).forEach(key => envVars[key] = typeof fileEnv[key] === 'string' ? resolvePath(fileEnv[key]) : fileEnv[key]);
-	Object.keys(testEnvConfig).forEach(key => envVars[key] = typeof testEnvConfig[key] === 'string' ? resolvePath(testEnvConfig[key]) : testEnvConfig[key]);
+  Object.keys(fileEnv).forEach(
+    (key) =>
+      (envVars[key] = typeof fileEnv[key] === 'string' ? resolvePath(fileEnv[key]) : fileEnv[key]),
+  );
+  Object.keys(testEnvConfig).forEach(
+    (key) =>
+      (envVars[key] =
+        typeof testEnvConfig[key] === 'string'
+          ? resolvePath(testEnvConfig[key])
+          : testEnvConfig[key]),
+  );
 
-	return envVars;
+  return envVars;
 }
-
 
 /**
  * Builds the environment for a tool invocation.
@@ -116,38 +141,50 @@ export function getTestEnvVars(envFile: string, env: { [key: string]: any }, wor
  * happens to be open.
  */
 export function getToolsEnvVars(workspaceUri?: vscode.Uri): any {
-	const resource = workspaceUri ?? (vscode.window.activeTextEditor ? vscode.window.activeTextEditor.document.uri : null);
-	const config = vscode.workspace.getConfiguration('go', resource);
-	const toolsEnvVars = config['toolsEnvVars'];
+  const resource =
+    workspaceUri ??
+    (vscode.window.activeTextEditor ? vscode.window.activeTextEditor.document.uri : null);
+  const config = vscode.workspace.getConfiguration('go', resource);
+  const toolsEnvVars = config['toolsEnvVars'];
 
-	const gopath = getCurrentGoPath(workspaceUri);
-	const envVars = Object.assign({}, process.env, gopath ? { GOPATH: gopath } : {});
+  const gopath = getCurrentGoPath(workspaceUri);
+  const envVars = Object.assign({}, process.env, gopath ? { GOPATH: gopath } : {});
 
-	if (toolsEnvVars && typeof toolsEnvVars === 'object') {
-		Object.keys(toolsEnvVars).forEach(key => envVars[key] = typeof toolsEnvVars[key] === 'string' ? resolvePath(toolsEnvVars[key]) : toolsEnvVars[key]);
-	}
+  if (toolsEnvVars && typeof toolsEnvVars === 'object') {
+    Object.keys(toolsEnvVars).forEach(
+      (key) =>
+        (envVars[key] =
+          typeof toolsEnvVars[key] === 'string'
+            ? resolvePath(toolsEnvVars[key])
+            : toolsEnvVars[key]),
+    );
+  }
 
-	// cgo expects go to be in the path
-	const goroot: string = envVars['GOROOT'];
-	let pathEnvVar: string;
-	if (envVars.hasOwnProperty('PATH')) {
-		pathEnvVar = 'PATH';
-	} else if (process.platform === 'win32' && envVars.hasOwnProperty('Path')) {
-		pathEnvVar = 'Path';
-	}
-	if (goroot && pathEnvVar && envVars[pathEnvVar] && (<string>envVars[pathEnvVar]).split(path.delimiter).indexOf(goroot) === -1) {
-		envVars[pathEnvVar] += path.delimiter + path.join(goroot, 'bin');
-	}
+  // cgo expects go to be in the path
+  const goroot: string = envVars['GOROOT'];
+  let pathEnvVar: string;
+  if (envVars.hasOwnProperty('PATH')) {
+    pathEnvVar = 'PATH';
+  } else if (process.platform === 'win32' && envVars.hasOwnProperty('Path')) {
+    pathEnvVar = 'Path';
+  }
+  if (
+    goroot &&
+    pathEnvVar &&
+    envVars[pathEnvVar] &&
+    (<string>envVars[pathEnvVar]).split(path.delimiter).indexOf(goroot) === -1
+  ) {
+    envVars[pathEnvVar] += path.delimiter + path.join(goroot, 'bin');
+  }
 
-	return envVars;
+  return envVars;
 }
 
 export function getCurrentGoPath(workspaceUri?: vscode.Uri): string {
-
-	const config = vscode.workspace.getConfiguration('go', workspaceUri);
-	let currentRoot = workspaceUri ? workspaceUri.fsPath : vscode.workspace.rootPath;
-	const configGopath = config['gopath'] ? resolvePath(config['gopath'], currentRoot) : '';
-	return  (configGopath || process.env['GOPATH']);
+  const config = vscode.workspace.getConfiguration('go', workspaceUri);
+  const currentRoot = workspaceUri ? workspaceUri.fsPath : vscode.workspace.rootPath;
+  const configGopath = config['gopath'] ? resolvePath(config['gopath'], currentRoot) : '';
+  return configGopath || process.env['GOPATH'];
 }
 
 const warnedTools = new Set<string>();
@@ -159,18 +196,18 @@ const warnedTools = new Set<string>();
  * time produces a burst of identical notifications.
  */
 export function promptForMissingTool(tool: string) {
-	if (warnedTools.has(tool)) {
-		return;
-	}
-	warnedTools.add(tool);
-	vscode.window.showInformationMessage(`${tool} is missing`);
+  if (warnedTools.has(tool)) {
+    return;
+  }
+  warnedTools.add(tool);
+  vscode.window.showInformationMessage(`${tool} is missing`);
 }
 
 /**
  * Clears the record of already-reported missing tools.
  */
 export function resetMissingToolWarnings(): void {
-	warnedTools.clear();
+  warnedTools.clear();
 }
 /**
  * Splits a stream of text into lines.
@@ -181,89 +218,89 @@ export function resetMissingToolWarnings(): void {
  * copied the rest of the stream once per line.
  */
 export class LineBuffer {
-	private readonly chunks: string[] = [];
-	private scanChunk = 0;
-	private scanPos = 0;
-	private pending = '';
-	private readonly lineListeners: ((line: string) => void)[] = [];
-	private readonly lastListeners: ((last: string) => void)[] = [];
+  private readonly chunks: string[] = [];
+  private scanChunk = 0;
+  private scanPos = 0;
+  private pending = '';
+  private readonly lineListeners: ((line: string) => void)[] = [];
+  private readonly lastListeners: ((last: string) => void)[] = [];
 
-	append(chunk: string) {
-		if (chunk.length === 0) {
-			return;
-		}
-		this.chunks.push(chunk);
-		this.scan();
-	}
+  append(chunk: string) {
+    if (chunk.length === 0) {
+      return;
+    }
+    this.chunks.push(chunk);
+    this.scan();
+  }
 
-	done() {
-		const last = this.pending !== '' ? this.pending : null;
-		this.pending = '';
-		this.fireDone(last);
-	}
+  done() {
+    const last = this.pending !== '' ? this.pending : null;
+    this.pending = '';
+    this.fireDone(last);
+  }
 
-	/**
-	 * Reads the lines that the chunks hold.
-	 */
-	private scan() {
-		while (this.scanChunk < this.chunks.length) {
-			const chunk = this.chunks[this.scanChunk];
-			const index = chunk.indexOf('\n', this.scanPos);
-			if (index === -1) {
-				// The chunk holds no line ending, so it is part of the line
-				// that is being read.
-				this.pending += chunk.substring(this.scanPos);
-				this.scanPos = chunk.length;
-				this.scanChunk++;
-				continue;
-			}
-			const text = chunk.substring(this.scanPos, index);
-			this.fireLine(this.pending === '' ? text : this.pending + text);
-			this.pending = '';
-			this.scanPos = index + 1;
-			if (this.scanPos >= chunk.length) {
-				this.scanChunk++;
-				this.scanPos = 0;
-			}
-		}
-		this.compact();
-	}
+  /**
+   * Reads the lines that the chunks hold.
+   */
+  private scan() {
+    while (this.scanChunk < this.chunks.length) {
+      const chunk = this.chunks[this.scanChunk];
+      const index = chunk.indexOf('\n', this.scanPos);
+      if (index === -1) {
+        // The chunk holds no line ending, so it is part of the line
+        // that is being read.
+        this.pending += chunk.substring(this.scanPos);
+        this.scanPos = chunk.length;
+        this.scanChunk++;
+        continue;
+      }
+      const text = chunk.substring(this.scanPos, index);
+      this.fireLine(this.pending === '' ? text : this.pending + text);
+      this.pending = '';
+      this.scanPos = index + 1;
+      if (this.scanPos >= chunk.length) {
+        this.scanChunk++;
+        this.scanPos = 0;
+      }
+    }
+    this.compact();
+  }
 
-	/**
-	 * Drops the chunks that have been read, so the array does not grow for
-	 * the whole life of the buffer.
-	 */
-	private compact() {
-		if (this.scanChunk === 0) {
-			return;
-		}
-		if (this.scanChunk >= this.chunks.length) {
-			// Every chunk has been read, so the next one starts at the
-			// beginning of the stream again.
-			this.chunks.length = 0;
-			this.scanChunk = 0;
-			this.scanPos = 0;
-			return;
-		}
-		if (this.scanChunk * 2 >= this.chunks.length) {
-			this.chunks.splice(0, this.scanChunk);
-			this.scanChunk = 0;
-		}
-	}
+  /**
+   * Drops the chunks that have been read, so the array does not grow for
+   * the whole life of the buffer.
+   */
+  private compact() {
+    if (this.scanChunk === 0) {
+      return;
+    }
+    if (this.scanChunk >= this.chunks.length) {
+      // Every chunk has been read, so the next one starts at the
+      // beginning of the stream again.
+      this.chunks.length = 0;
+      this.scanChunk = 0;
+      this.scanPos = 0;
+      return;
+    }
+    if (this.scanChunk * 2 >= this.chunks.length) {
+      this.chunks.splice(0, this.scanChunk);
+      this.scanChunk = 0;
+    }
+  }
 
-	private fireLine(line: string) {
-		this.lineListeners.forEach(listener => listener(line));
-	}
+  private fireLine(line: string) {
+    this.lineListeners.forEach((listener) => listener(line));
+  }
 
-	private fireDone(last: string) {
-		this.lastListeners.forEach(listener => listener(last));
-	}
+  private fireDone(last: string) {
+    this.lastListeners.forEach((listener) => listener(last));
+  }
 
-	onLine(listener: (line: string) => void) {
-		this.lineListeners.push(listener);
-	}
+  onLine(listener: (line: string) => void) {
+    this.lineListeners.push(listener);
+  }
 
-	onDone(listener: (last: string) => void) {
-		this.lastListeners.push(listener);
-	}
+  onDone(listener: (last: string) => void) {
+    this.lastListeners.push(listener);
+  }
 }

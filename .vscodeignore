@@ -9,3 +9,11 @@ vitest.config.ts
 tsconfig.json
 vsc-extension-quickstart.md
 tslint.json
+src/**
+tsconfig.json
+vitest.config.ts
+eslint.config.mjs
+.prettierrc
+.prettierignore
+tslint.json
+bench/**

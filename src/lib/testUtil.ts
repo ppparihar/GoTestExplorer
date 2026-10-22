@@ -2,7 +2,12 @@ import cp = require('child_process');
 import * as vscode from 'vscode';
 import fs = require('fs');
 import path = require('path');
-import { getBinPathWithPreferredGopath, getBinPathFromEnvVar, envPath, resolveHomeDir } from './goPath';
+import {
+  getBinPathWithPreferredGopath,
+  getBinPathFromEnvVar,
+  envPath,
+  resolveHomeDir,
+} from './goPath';
 import { getCurrentGoPath, getTestEnvVars, getToolsGopath, LineBuffer } from './utils';
 import { buildTargetArgs } from './testArgs';
 import { testOutput } from './testOutput';
@@ -17,7 +22,6 @@ const sendSignal = 'SIGKILL';
  */
 const runningTestProcesses: cp.ChildProcess[] = [];
 
-
 /**
  * Stops every test run that is in flight.
  *
@@ -29,10 +33,10 @@ const runningTestProcesses: cp.ChildProcess[] = [];
  * @returns the number of runs that were stopped.
  */
 export function cancelRunningTests(): number {
-	// The list is copied because a process that is killed is removed from it.
-	const processes = runningTestProcesses.slice();
-	processes.forEach(child => killProcessTree(child));
-	return processes.length;
+  // The list is copied because a process that is killed is removed from it.
+  const processes = runningTestProcesses.slice();
+  processes.forEach((child) => killProcessTree(child));
+  return processes.length;
 }
 
 /**
@@ -42,31 +46,30 @@ export function cancelRunningTests(): number {
  * @param signal the signal to send.
  */
 export function killProcessTree(child: cp.ChildProcess, signal: NodeJS.Signals = sendSignal): void {
-	if (child.pid === undefined) {
-		return;
-	}
-	if (process.platform === 'win32') {
-		// Windows has no process groups, so the tree is walked by taskkill.
-		try {
-			cp.execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
-		} catch (e) {
-			// The process is gone already, or could not be killed.
-		}
-		return;
-	}
-	try {
-		// The negative pid addresses the whole process group. The child leads
-		// its own group, because it was spawned detached.
-		process.kill(-child.pid, signal);
-	} catch (e) {
-		try {
-			child.kill(signal);
-		} catch (e2) {
-			// The process is gone already.
-		}
-	}
+  if (child.pid === undefined) {
+    return;
+  }
+  if (process.platform === 'win32') {
+    // Windows has no process groups, so the tree is walked by taskkill.
+    try {
+      cp.execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+    } catch (e) {
+      // The process is gone already, or could not be killed.
+    }
+    return;
+  }
+  try {
+    // The negative pid addresses the whole process group. The child leads
+    // its own group, because it was spawned detached.
+    process.kill(-child.pid, signal);
+  } catch (e) {
+    try {
+      child.kill(signal);
+    } catch (e2) {
+      // The process is gone already.
+    }
+  }
 }
-
 
 /**
  * Input to goTest.
@@ -75,86 +78,90 @@ export function killProcessTree(child: cp.ChildProcess, signal: NodeJS.Signals =
  * A file that holds tests.
  */
 export interface TestFile {
-	/**
-	 * The file the tests are declared in.
-	 */
-	uri: vscode.Uri;
-	/**
-	 * The name of the file, which is also the name of its node in the tree.
-	 */
-	name: string;
-	/**
-	 * The names of the tests the file holds.
-	 */
-	functions: string[];
+  /**
+   * The file the tests are declared in.
+   */
+  uri: vscode.Uri;
+  /**
+   * The name of the file, which is also the name of its node in the tree.
+   */
+  name: string;
+  /**
+   * The names of the tests the file holds.
+   */
+  functions: string[];
 }
 
 /**
  * A package that a run tests.
  */
 export interface TestPackage {
-	/**
-	 * The import path of the package, which is how the tool reports it.
-	 */
-	importPath: string;
-	/**
-	 * The path of the package, relative to the directory the run starts in.
-	 */
-	path: string;
-	/**
-	 * The files of the package that hold tests.
-	 */
-	files: TestFile[];
+  /**
+   * The import path of the package, which is how the tool reports it.
+   */
+  importPath: string;
+  /**
+   * The path of the package, relative to the directory the run starts in.
+   */
+  path: string;
+  /**
+   * The files of the package that hold tests.
+   */
+  files: TestFile[];
 }
 
 export interface TestConfig {
-	/**
-	 * The working directory for `go test`.
-	 */
-	dir: string;
-	/**
-	 * The settings that decide how the run is carried out.
-	 */
-	settings: RunSettings;
-	/**
-	 * Test flags to override the testFlags and buildFlags from the settings.
-	 */
-	flags: string[];
-	/**
-	 * Specific function names to test.
-	 */
-	functions?: string[];
-	/**
-	 * Test was not requested explicitly. The output should not appear in the UI.
-	 */
-	background?: boolean;
-	/**
-	 * Run all tests from all sub directories under `dir`
-	 */
-	includeSubDirectories?: boolean;
-	/**
-	 * Whether this is a benchmark.
-	 */
-	isBenchmark?: boolean;
+  /**
+   * The working directory for `go test`.
+   */
+  dir: string;
+  /**
+   * The settings that decide how the run is carried out.
+   */
+  settings: RunSettings;
+  /**
+   * Test flags to override the testFlags and buildFlags from the settings.
+   */
+  flags: string[];
+  /**
+   * Specific function names to test.
+   */
+  functions?: string[];
+  /**
+   * Test was not requested explicitly. The output should not appear in the UI.
+   */
+  background?: boolean;
+  /**
+   * Run all tests from all sub directories under `dir`
+   */
+  includeSubDirectories?: boolean;
+  /**
+   * Whether this is a benchmark.
+   */
+  isBenchmark?: boolean;
 
-	testUri: vscode.Uri;
+  testUri: vscode.Uri;
 
-	testName: string;
+  testName: string;
 
-	/**
-	 * The packages the run tests, when it tests more than one.
-	 *
-	 * A run that tests several packages uses one process for all of them, so
-	 * that the packages are compiled once. There is no filter on the names of
-	 * the tests in that case: a filter would apply to every package of the
-	 * run, and would keep a test that was not asked for from running in a
-	 * package where it was asked for.
-	 */
-	packages?: TestPackage[];
+  /**
+   * The packages the run tests, when it tests more than one.
+   *
+   * A run that tests several packages uses one process for all of them, so
+   * that the packages are compiled once. There is no filter on the names of
+   * the tests in that case: a filter would apply to every package of the
+   * run, and would keep a test that was not asked for from running in a
+   * package where it was asked for.
+   */
+  packages?: TestPackage[];
 }
 
 export function getBinPath(tool: string): string {
-	return getBinPathWithPreferredGopath(tool, tool === 'go' ? [] : [getToolsGopath(), getCurrentGoPath()], vscode.workspace.getConfiguration('go', null).get('alternateTools'));
+  return getBinPathWithPreferredGopath(
+    tool,
+    tool === 'go' ? [] : [getToolsGopath(), getCurrentGoPath()],
+    vscode.workspace.getConfiguration('go', null).get('alternateTools'),
+  );
 }
 
 /**
@@ -168,18 +175,18 @@ export function getBinPath(tool: string): string {
  * @param resource the file the settings are resolved against.
  */
 export function getGoBinaryPath(resource?: vscode.Uri): string {
-	const binary = goBinary(resource);
-	if (binary) {
-		return resolveHomeDir(binary);
-	}
-	const gopath = goPath(resource);
-	if (gopath) {
-		const fromGopath = getBinPathFromEnvVar('go', resolveHomeDir(gopath), true);
-		if (fromGopath) {
-			return fromGopath;
-		}
-	}
-	return getBinPath('go');
+  const binary = goBinary(resource);
+  if (binary) {
+    return resolveHomeDir(binary);
+  }
+  const gopath = goPath(resource);
+  if (gopath) {
+    const fromGopath = getBinPathFromEnvVar('go', resolveHomeDir(gopath), true);
+    if (fromGopath) {
+      return fromGopath;
+    }
+  }
+  return getBinPath('go');
 }
 
 /**
@@ -190,158 +197,178 @@ export function getGoBinaryPath(resource?: vscode.Uri): string {
  * tool is installed.
  */
 export function isToolAvailable(tool: string): boolean {
-	const binPath = getBinPath(tool);
-	if (!binPath) {
-		return false;
-	}
-	if (path.isAbsolute(binPath)) {
-		try {
-			return fs.statSync(binPath).isFile();
-		} catch (e) {
-			return false;
-		}
-	}
-	return getBinPathFromEnvVar(tool, envPath, false) !== null;
+  const binPath = getBinPath(tool);
+  if (!binPath) {
+    return false;
+  }
+  if (path.isAbsolute(binPath)) {
+    try {
+      return fs.statSync(binPath).isFile();
+    } catch (e) {
+      return false;
+    }
+  }
+  return getBinPathFromEnvVar(tool, envPath, false) !== null;
 }
 
 /**
  * Input to goTest.
  */
-export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationToken): Promise<RawTestResult> {
-	return new Promise<RawTestResult>((resolve, reject) => {
+export function runGoTest(
+  testconfig: TestConfig,
+  token?: vscode.CancellationToken,
+): Promise<RawTestResult> {
+  return new Promise<RawTestResult>((resolve, reject) => {
+    // We do not want to clear it if tests are already running, as that could
+    // lose valuable output.
+    if (runningTestProcesses.length < 1) {
+      testOutput.clear();
+    }
 
-		// We do not want to clear it if tests are already running, as that could
-		// lose valuable output.
-		if (runningTestProcesses.length < 1) {
-			testOutput.clear();
-		}
+    if (!testconfig.background) {
+      testOutput.show(true);
+    }
 
-		if (!testconfig.background) {
-			testOutput.show(true);
-		}
+    const buildTags: string = testconfig.settings.buildTags;
+    const testFlags: Array<string> = testconfig.settings.testFlags || [];
+    // The tool writes a JSON event per line, so the outcome of every
+    // test is read from the stream rather than scraped from the text.
+    const args: Array<string> = ['test', '-json', ...testconfig.flags];
+    const testType: string = testconfig.isBenchmark ? 'Benchmarks' : 'Tests';
 
-		let buildTags: string = testconfig.settings.buildTags;
-		let testFlags: Array<string> = testconfig.settings.testFlags || [];
-		// The tool writes a JSON event per line, so the outcome of every
-		// test is read from the stream rather than scraped from the text.
-		let args: Array<string> = ['test', '-json', ...testconfig.flags];
-		let testType: string = testconfig.isBenchmark ? 'Benchmarks' : 'Tests';
+    if (testconfig.isBenchmark) {
+      args.push('-benchmem', '-run=^$');
+    } else {
+      args.push('-timeout', testconfig.settings.timeout);
+    }
+    if (buildTags && testconfig.flags.indexOf('-tags') === -1) {
+      args.push('-tags', buildTags);
+    }
 
-		if (testconfig.isBenchmark) {
-			args.push('-benchmem', '-run=^$');
-		} else {
-			args.push('-timeout', testconfig.settings.timeout);
-		}
-		if (buildTags && testconfig.flags.indexOf('-tags') === -1) {
-			args.push('-tags', buildTags);
-		}
-		
-		testFlags.forEach((flag)=> args.push(flag));
+    testFlags.forEach((flag) => args.push(flag));
 
-		let testEnvVars = getTestEnvVars(testconfig.settings.envFile, testconfig.settings.env, testconfig.testUri);
-		let goRuntimePath = getGoBinaryPath(testconfig.testUri);
+    const testEnvVars = getTestEnvVars(
+      testconfig.settings.envFile,
+      testconfig.settings.env,
+      testconfig.testUri,
+    );
+    const goRuntimePath = getGoBinaryPath(testconfig.testUri);
 
-		if (!goRuntimePath) {
-			const message = 'Cannot find "go" binary. Update PATH or GOROOT appropriately';
-			vscode.window.showInformationMessage(message);
-			testOutput.writeLine(`Error: ${testType} failed.`);
-			testOutput.writeLine(message);
-			resolve(new RawTestResult(false, [], [], new Error(message)));
-			return;
-		}
+    if (!goRuntimePath) {
+      const message = 'Cannot find "go" binary. Update PATH or GOROOT appropriately';
+      vscode.window.showInformationMessage(message);
+      testOutput.writeLine(`Error: ${testType} failed.`);
+      testOutput.writeLine(message);
+      resolve(new RawTestResult(false, [], [], new Error(message)));
+      return;
+    }
 
-		// Append the package name to args to enable running tests in symlinked directories
-		// let currentGoWorkspace = getCurrentGoWorkspaceFromGOPATH(getCurrentGoPath(), testconfig.dir);
-		// if (currentGoWorkspace && !testconfig.includeSubDirectories) {
-		// 	args.push(testconfig.dir.substr(currentGoWorkspace.length + 1));
-		// }
+    // Append the package name to args to enable running tests in symlinked directories
+    // let currentGoWorkspace = getCurrentGoWorkspaceFromGOPATH(getCurrentGoPath(), testconfig.dir);
+    // if (currentGoWorkspace && !testconfig.includeSubDirectories) {
+    // 	args.push(testconfig.dir.substr(currentGoWorkspace.length + 1));
+    // }
 
-		targetArgs(testconfig).then(targets => {
-			let outTargets = args.slice(0);
-			if (targets.length > 4) {
-				outTargets.push('<long arguments omitted>');
-			} else {
-				outTargets.push(...targets);
-			}
-			testOutput.writeLine(['Running tool:', goRuntimePath, ...outTargets].join(' '));
-			// The timeout that is in force is shown, so a run that fails
-			// because of it can be told apart from a run that failed for
-			// another reason.
-			if (!testconfig.isBenchmark) {
-				testOutput.writeLine(`Timeout: ${testconfig.settings.timeout}`);
-			}
-			testOutput.writeLine('');
+    targetArgs(testconfig).then(
+      (targets) => {
+        const outTargets = args.slice(0);
+        if (targets.length > 4) {
+          outTargets.push('<long arguments omitted>');
+        } else {
+          outTargets.push(...targets);
+        }
+        testOutput.writeLine(['Running tool:', goRuntimePath, ...outTargets].join(' '));
+        // The timeout that is in force is shown, so a run that fails
+        // because of it can be told apart from a run that failed for
+        // another reason.
+        if (!testconfig.isBenchmark) {
+          testOutput.writeLine(`Timeout: ${testconfig.settings.timeout}`);
+        }
+        testOutput.writeLine('');
 
-			args.push(...targets);
+        args.push(...targets);
 
-			// The child leads its own process group, so the whole tree can be
-			// killed when the run is cancelled. A detached child outlives the
-			// extension host, so the runs are killed when the window closes.
-			const detached = process.platform !== 'win32';
-			let tp = cp.spawn(goRuntimePath, args, { env: testEnvVars, cwd: testconfig.dir, detached });
-			const parser = new GoTestJsonParser();
-			const errBuf = new LineBuffer();
+        // The child leads its own process group, so the whole tree can be
+        // killed when the run is cancelled. A detached child outlives the
+        // extension host, so the runs are killed when the window closes.
+        const detached = process.platform !== 'win32';
+        const tp = cp.spawn(goRuntimePath, args, {
+          env: testEnvVars,
+          cwd: testconfig.dir,
+          detached,
+        });
+        const parser = new GoTestJsonParser();
+        const errBuf = new LineBuffer();
 
-			if (token) {
-				if (token.isCancellationRequested) {
-					killProcessTree(tp);
-				} else {
-					token.onCancellationRequested(() => killProcessTree(tp));
-				}
-			}
+        if (token) {
+          if (token.isCancellationRequested) {
+            killProcessTree(tp);
+          } else {
+            token.onCancellationRequested(() => killProcessTree(tp));
+          }
+        }
 
-			// The output of the run is written as it arrives, so a long run
-			// shows its progress.
-			tp.stdout.on('data', chunk => {
-				const parsed = parser.write(chunk.toString());
-				parsed.output.forEach(line => testOutput.writeLine(line));
-				parsed.buildOutput.forEach(line => testOutput.writeLine(expandFilePathInOutputLine(line, testconfig.dir)));
-			});
+        // The output of the run is written as it arrives, so a long run
+        // shows its progress.
+        tp.stdout.on('data', (chunk) => {
+          const parsed = parser.write(chunk.toString());
+          parsed.output.forEach((line) => testOutput.writeLine(line));
+          parsed.buildOutput.forEach((line) =>
+            testOutput.writeLine(expandFilePathInOutputLine(line, testconfig.dir)),
+          );
+        });
 
-			// go test emits anything that is not part of the event stream on
-			// stderr, which contains paths relative to the cwd.
-			errBuf.onLine(line => testOutput.writeLine(expandFilePathInOutputLine(line, testconfig.dir)));
-			errBuf.onDone(last => last && testOutput.writeLine(expandFilePathInOutputLine(last, testconfig.dir)));
+        // go test emits anything that is not part of the event stream on
+        // stderr, which contains paths relative to the cwd.
+        errBuf.onLine((line) =>
+          testOutput.writeLine(expandFilePathInOutputLine(line, testconfig.dir)),
+        );
+        errBuf.onDone(
+          (last) => last && testOutput.writeLine(expandFilePathInOutputLine(last, testconfig.dir)),
+        );
 
-			tp.stderr.on('data', chunk => errBuf.append(chunk.toString()));
+        tp.stderr.on('data', (chunk) => errBuf.append(chunk.toString()));
 
-			tp.on('close', (code, signal) => {
-				const parsed = parser.end();
-				parsed.output.forEach(line => testOutput.writeLine(line));
-				parsed.buildOutput.forEach(line => testOutput.writeLine(expandFilePathInOutputLine(line, testconfig.dir)));
+        tp.on('close', (code, signal) => {
+          const parsed = parser.end();
+          parsed.output.forEach((line) => testOutput.writeLine(line));
+          parsed.buildOutput.forEach((line) =>
+            testOutput.writeLine(expandFilePathInOutputLine(line, testconfig.dir)),
+          );
 
-				errBuf.done();
+          errBuf.done();
 
-				if (code) {
-					testOutput.writeLine(`Error: ${testType} failed.`);
-				} else if (signal === sendSignal) {
-					testOutput.writeLine(`Error: ${testType} terminated by user.`);
-				} else {
-					testOutput.writeLine(`Success: ${testType} passed.`);
-				}
+          if (code) {
+            testOutput.writeLine(`Error: ${testType} failed.`);
+          } else if (signal === sendSignal) {
+            testOutput.writeLine(`Error: ${testType} terminated by user.`);
+          } else {
+            testOutput.writeLine(`Success: ${testType} passed.`);
+          }
 
-				let index = runningTestProcesses.indexOf(tp, 0);
-				if (index > -1) {
-					runningTestProcesses.splice(index, 1);
-				}
+          const index = runningTestProcesses.indexOf(tp, 0);
+          if (index > -1) {
+            runningTestProcesses.splice(index, 1);
+          }
 
-				const results = parser.results;
-				// The build error comes before everything else the run
-				// produced, so it leads the output.
-				const output = results.buildOutput.concat(results.output);
-				const failedTests: string[] = [];
-				results.packages.forEach(pkg => failedTests.push(...pkg.failedTests));
-				resolve(new RawTestResult(code === 0, output, failedTests, undefined, results.packages));
-			});
+          const results = parser.results;
+          // The build error comes before everything else the run
+          // produced, so it leads the output.
+          const output = results.buildOutput.concat(results.output);
+          const failedTests: string[] = [];
+          results.packages.forEach((pkg) => failedTests.push(...pkg.failedTests));
+          resolve(new RawTestResult(code === 0, output, failedTests, undefined, results.packages));
+        });
 
-			runningTestProcesses.push(tp);
-
-		}, err => {
-			testOutput.writeLine(`Error: ${testType} failed.`);
-			testOutput.writeLine(err);
-			resolve(new RawTestResult(false, [], err));
-		});
-	});
+        runningTestProcesses.push(tp);
+      },
+      (err) => {
+        testOutput.writeLine(`Error: ${testType} failed.`);
+        testOutput.writeLine(err);
+        resolve(new RawTestResult(false, [], err));
+      },
+    );
+  });
 }
 
 /**
@@ -364,12 +391,12 @@ const goFileInOutput = /(\S+\.go):(\d+):/g;
  * @returns the line with the paths of Go files made absolute.
  */
 export function expandFilePathInOutputLine(line: string, cwd: string): string {
-	return line.replace(goFileInOutput, (match, file: string, lineNumber: string) => {
-		if (path.isAbsolute(file)) {
-			return match;
-		}
-		return path.join(cwd, file) + ':' + lineNumber + ':';
-	});
+  return line.replace(goFileInOutput, (match, file: string, lineNumber: string) => {
+    if (path.isAbsolute(file)) {
+      return match;
+    }
+    return path.join(cwd, file) + ':' + lineNumber + ':';
+  });
 }
 
 /**
@@ -382,19 +409,15 @@ export function expandFilePathInOutputLine(line: string, cwd: string): string {
  * @param testconfig Configuration for the Go extension.
  */
 function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
-	if (testconfig.packages && testconfig.packages.length > 0) {
-		return Promise.resolve(testconfig.packages.map(pkg => pkg.path === '' ? '.' : './' + pkg.path));
-	}
-	return Promise.resolve(buildTargetArgs({
-		functions: testconfig.functions,
-		isBenchmark: testconfig.isBenchmark
-	}));
+  if (testconfig.packages && testconfig.packages.length > 0) {
+    return Promise.resolve(
+      testconfig.packages.map((pkg) => (pkg.path === '' ? '.' : './' + pkg.path)),
+    );
+  }
+  return Promise.resolve(
+    buildTargetArgs({
+      functions: testconfig.functions,
+      isBenchmark: testconfig.isBenchmark,
+    }),
+  );
 }
-
-
-
-
-
-
-
-

@@ -3,14 +3,14 @@ import * as path from 'path';
 
 /** How the walker should traverse a directory tree. */
 export interface FindTestFilesOptions {
-	/**
-	 * Directory names to skip entirely, wherever they appear in the tree.
-	 */
-	readonly skipFolders: readonly string[];
-	/**
-	 * The maximum number of directories read at the same time.
-	 */
-	readonly concurrency: number;
+  /**
+   * Directory names to skip entirely, wherever they appear in the tree.
+   */
+  readonly skipFolders: readonly string[];
+  /**
+   * The maximum number of directories read at the same time.
+   */
+  readonly concurrency: number;
 }
 
 /**
@@ -29,84 +29,87 @@ export const TEST_FILE_SUFFIX = '_test.go';
  * @param options how to traverse it.
  * @returns the absolute paths of the test files, in no particular order.
  */
-export async function findTestFiles(root: string, options: FindTestFilesOptions): Promise<string[]> {
-	const skip = new Set(options.skipFolders);
-	const concurrency = Math.max(1, options.concurrency);
+export async function findTestFiles(
+  root: string,
+  options: FindTestFilesOptions,
+): Promise<string[]> {
+  const skip = new Set(options.skipFolders);
+  const concurrency = Math.max(1, options.concurrency);
 
-	const files: string[] = [];
-	const directories: string[] = [root];
-	// Symlinked directories can point back into the tree, so every directory
-	// that is entered is remembered by its real path.
-	const visited = new Set<string>();
-	const rootRealPath = await realPathOf(root);
-	if (rootRealPath) {
-		visited.add(rootRealPath);
-	}
+  const files: string[] = [];
+  const directories: string[] = [root];
+  // Symlinked directories can point back into the tree, so every directory
+  // that is entered is remembered by its real path.
+  const visited = new Set<string>();
+  const rootRealPath = await realPathOf(root);
+  if (rootRealPath) {
+    visited.add(rootRealPath);
+  }
 
-	const worker = async (): Promise<void> => {
-		while (directories.length > 0) {
-			const directory = directories.shift() as string;
-			let entries: fs.Dirent[];
-			try {
-				entries = await fs.promises.readdir(directory, { withFileTypes: true });
-			} catch (e) {
-				// A directory that cannot be read — a permission error, or one
-				// that disappeared while the walk was running — is skipped
-				// rather than failing the whole discovery.
-				continue;
-			}
+  const worker = async (): Promise<void> => {
+    while (directories.length > 0) {
+      const directory = directories.shift() as string;
+      let entries: fs.Dirent[];
+      try {
+        entries = await fs.promises.readdir(directory, { withFileTypes: true });
+      } catch (e) {
+        // A directory that cannot be read — a permission error, or one
+        // that disappeared while the walk was running — is skipped
+        // rather than failing the whole discovery.
+        continue;
+      }
 
-			for (const entry of entries) {
-				const fullPath = path.join(directory, entry.name);
+      for (const entry of entries) {
+        const fullPath = path.join(directory, entry.name);
 
-				if (entry.isDirectory()) {
-					if (!skip.has(entry.name)) {
-						directories.push(fullPath);
-					}
-					continue;
-				}
+        if (entry.isDirectory()) {
+          if (!skip.has(entry.name)) {
+            directories.push(fullPath);
+          }
+          continue;
+        }
 
-				if (entry.isSymbolicLink()) {
-					const resolved = await resolveLink(fullPath);
-					if (!resolved) {
-						continue;
-					}
-					if (resolved.isDirectory) {
-						// The path under the workspace is kept, so the file the
-						// user sees is the one they opened; the real path is
-						// only used to detect a cycle.
-						if (!skip.has(entry.name) && !visited.has(resolved.realPath)) {
-							visited.add(resolved.realPath);
-							directories.push(fullPath);
-						}
-						continue;
-					}
-					if (resolved.isFile && entry.name.endsWith(TEST_FILE_SUFFIX)) {
-						files.push(fullPath);
-					}
-					continue;
-				}
+        if (entry.isSymbolicLink()) {
+          const resolved = await resolveLink(fullPath);
+          if (!resolved) {
+            continue;
+          }
+          if (resolved.isDirectory) {
+            // The path under the workspace is kept, so the file the
+            // user sees is the one they opened; the real path is
+            // only used to detect a cycle.
+            if (!skip.has(entry.name) && !visited.has(resolved.realPath)) {
+              visited.add(resolved.realPath);
+              directories.push(fullPath);
+            }
+            continue;
+          }
+          if (resolved.isFile && entry.name.endsWith(TEST_FILE_SUFFIX)) {
+            files.push(fullPath);
+          }
+          continue;
+        }
 
-				if (entry.isFile() && entry.name.endsWith(TEST_FILE_SUFFIX)) {
-					files.push(fullPath);
-				}
-			}
-		}
-	};
+        if (entry.isFile() && entry.name.endsWith(TEST_FILE_SUFFIX)) {
+          files.push(fullPath);
+        }
+      }
+    }
+  };
 
-	const workers: Promise<void>[] = [];
-	for (let i = 0; i < concurrency; i++) {
-		workers.push(worker());
-	}
-	await Promise.all(workers);
+  const workers: Promise<void>[] = [];
+  for (let i = 0; i < concurrency; i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
 
-	return files;
+  return files;
 }
 
 interface ResolvedLink {
-	readonly isDirectory: boolean;
-	readonly isFile: boolean;
-	readonly realPath: string;
+  readonly isDirectory: boolean;
+  readonly isFile: boolean;
+  readonly realPath: string;
 }
 
 /**
@@ -120,14 +123,14 @@ interface ResolvedLink {
  * @param skipFolders the directory names to skip.
  */
 export function isInSkippedFolder(filePath: string, skipFolders: readonly string[]): boolean {
-	if (skipFolders.length === 0) {
-		return false;
-	}
-	const skip = new Set(skipFolders);
-	return path
-		.dirname(filePath)
-		.split(path.sep)
-		.some(segment => skip.has(segment));
+  if (skipFolders.length === 0) {
+    return false;
+  }
+  const skip = new Set(skipFolders);
+  return path
+    .dirname(filePath)
+    .split(path.sep)
+    .some((segment) => skip.has(segment));
 }
 
 /**
@@ -136,11 +139,11 @@ export function isInSkippedFolder(filePath: string, skipFolders: readonly string
  * @returns the real path, or null when it cannot be resolved.
  */
 async function realPathOf(target: string): Promise<string | null> {
-	try {
-		return await fs.promises.realpath(target);
-	} catch (e) {
-		return null;
-	}
+  try {
+    return await fs.promises.realpath(target);
+  } catch (e) {
+    return null;
+  }
 }
 
 /**
@@ -149,14 +152,14 @@ async function realPathOf(target: string): Promise<string | null> {
  * @returns the target, or null when the link is broken.
  */
 async function resolveLink(linkPath: string): Promise<ResolvedLink | null> {
-	try {
-		const stats = await fs.promises.stat(linkPath);
-		return {
-			isDirectory: stats.isDirectory(),
-			isFile: stats.isFile(),
-			realPath: await fs.promises.realpath(linkPath)
-		};
-	} catch (e) {
-		return null;
-	}
+  try {
+    const stats = await fs.promises.stat(linkPath);
+    return {
+      isDirectory: stats.isDirectory(),
+      isFile: stats.isFile(),
+      realPath: await fs.promises.realpath(linkPath),
+    };
+  } catch (e) {
+    return null;
+  }
 }

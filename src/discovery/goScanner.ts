@@ -26,33 +26,33 @@ import * as fs from 'fs';
 
 /** A test function declaration found in a Go source file. */
 export interface GoTestDecl {
-	/** The declared name, for example `TestAlpha`. */
-	readonly name: string;
-	/** Zero-based line the declaration starts on. */
-	readonly line: number;
-	/** Zero-based column of the first character of the name. */
-	readonly startChar: number;
-	/** Zero-based column just past the last character of the name. */
-	readonly endChar: number;
-	/**
-	 * True when the parameter list mentions `testing.T`, `testing.B` or
-	 * `testing.F`, which is what the Go toolchain requires of a test
-	 * function.
-	 */
-	readonly usesTesting: boolean;
+  /** The declared name, for example `TestAlpha`. */
+  readonly name: string;
+  /** Zero-based line the declaration starts on. */
+  readonly line: number;
+  /** Zero-based column of the first character of the name. */
+  readonly startChar: number;
+  /** Zero-based column just past the last character of the name. */
+  readonly endChar: number;
+  /**
+   * True when the parameter list mentions `testing.T`, `testing.B` or
+   * `testing.F`, which is what the Go toolchain requires of a test
+   * function.
+   */
+  readonly usesTesting: boolean;
 }
 
 /** The outcome of scanning a Go source file. */
 export interface ScanResult {
-	/** Every test declaration found, in source order. */
-	readonly declarations: readonly GoTestDecl[];
-	/**
-	 * False when the source could not be scanned with confidence, in which case
-	 * `declarations` may be incomplete.
-	 */
-	readonly confident: boolean;
-	/** Why the scan was not confident, when it was not. */
-	readonly reason?: string;
+  /** Every test declaration found, in source order. */
+  readonly declarations: readonly GoTestDecl[];
+  /**
+   * False when the source could not be scanned with confidence, in which case
+   * `declarations` may be incomplete.
+   */
+  readonly confident: boolean;
+  /** Why the scan was not confident, when it was not. */
+  readonly reason?: string;
 }
 
 const CHAR_TAB = 9;
@@ -82,23 +82,25 @@ const CHAR_CLOSE_BRACE = 125;
 
 /** A declaration before it is converted to line and column positions. */
 interface RawDecl {
-	readonly name: string;
-	readonly nameOffset: number;
-	readonly usesTesting: boolean;
+  readonly name: string;
+  readonly nameOffset: number;
+  readonly usesTesting: boolean;
 }
 
 function isIdentStart(code: number): boolean {
-	return (code >= CHAR_UPPER_A && code <= CHAR_UPPER_Z)
-		|| (code >= CHAR_LOWER_A && code <= CHAR_LOWER_Z)
-		|| code === CHAR_UNDERSCORE;
+  return (
+    (code >= CHAR_UPPER_A && code <= CHAR_UPPER_Z) ||
+    (code >= CHAR_LOWER_A && code <= CHAR_LOWER_Z) ||
+    code === CHAR_UNDERSCORE
+  );
 }
 
 function isIdentPart(code: number): boolean {
-	return isIdentStart(code) || (code >= CHAR_ZERO && code <= CHAR_NINE);
+  return isIdentStart(code) || (code >= CHAR_ZERO && code <= CHAR_NINE);
 }
 
 function charCodeAt(text: string, index: number): number {
-	return index >= 0 && index < text.length ? text.charCodeAt(index) : 0;
+  return index >= 0 && index < text.length ? text.charCodeAt(index) : 0;
 }
 
 /**
@@ -109,16 +111,21 @@ function charCodeAt(text: string, index: number): number {
  * lines.
  */
 function skipSpace(text: string, index: number): number {
-	let i = index;
-	while (i < text.length) {
-		const code = text.charCodeAt(i);
-		if (code === CHAR_SPACE || code === CHAR_TAB || code === CHAR_NEWLINE || code === CHAR_CARRIAGE_RETURN) {
-			i++;
-			continue;
-		}
-		break;
-	}
-	return i;
+  let i = index;
+  while (i < text.length) {
+    const code = text.charCodeAt(i);
+    if (
+      code === CHAR_SPACE ||
+      code === CHAR_TAB ||
+      code === CHAR_NEWLINE ||
+      code === CHAR_CARRIAGE_RETURN
+    ) {
+      i++;
+      continue;
+    }
+    break;
+  }
+  return i;
 }
 
 /**
@@ -128,23 +135,23 @@ function skipSpace(text: string, index: number): number {
  * not terminated.
  */
 function skipInterpretedString(text: string, index: number): number {
-	let i = index + 1;
-	while (i < text.length) {
-		const code = text.charCodeAt(i);
-		if (code === CHAR_BACKSLASH) {
-			i += 2;
-			continue;
-		}
-		if (code === CHAR_NEWLINE) {
-			// An interpreted string cannot span a line, so the file is broken.
-			return -1;
-		}
-		if (code === CHAR_QUOTE) {
-			return i + 1;
-		}
-		i++;
-	}
-	return -1;
+  let i = index + 1;
+  while (i < text.length) {
+    const code = text.charCodeAt(i);
+    if (code === CHAR_BACKSLASH) {
+      i += 2;
+      continue;
+    }
+    if (code === CHAR_NEWLINE) {
+      // An interpreted string cannot span a line, so the file is broken.
+      return -1;
+    }
+    if (code === CHAR_QUOTE) {
+      return i + 1;
+    }
+    i++;
+  }
+  return -1;
 }
 
 /**
@@ -154,22 +161,22 @@ function skipInterpretedString(text: string, index: number): number {
  * not terminated.
  */
 function skipRune(text: string, index: number): number {
-	let i = index + 1;
-	while (i < text.length) {
-		const code = text.charCodeAt(i);
-		if (code === CHAR_BACKSLASH) {
-			i += 2;
-			continue;
-		}
-		if (code === CHAR_NEWLINE) {
-			return -1;
-		}
-		if (code === CHAR_APOSTROPHE) {
-			return i + 1;
-		}
-		i++;
-	}
-	return -1;
+  let i = index + 1;
+  while (i < text.length) {
+    const code = text.charCodeAt(i);
+    if (code === CHAR_BACKSLASH) {
+      i += 2;
+      continue;
+    }
+    if (code === CHAR_NEWLINE) {
+      return -1;
+    }
+    if (code === CHAR_APOSTROPHE) {
+      return i + 1;
+    }
+    i++;
+  }
+  return -1;
 }
 
 /**
@@ -183,74 +190,74 @@ function skipRune(text: string, index: number): number {
  * @returns the index of the closing bracket, or -1 when it is not found.
  */
 function matchBracket(text: string, index: number, open: number, close: number): number {
-	let depth = 0;
-	let i = index;
-	while (i < text.length) {
-		const code = text.charCodeAt(i);
+  let depth = 0;
+  let i = index;
+  while (i < text.length) {
+    const code = text.charCodeAt(i);
 
-		if (code === CHAR_SLASH) {
-			const next = charCodeAt(text, i + 1);
-			if (next === CHAR_SLASH) {
-				const end = text.indexOf('\n', i + 2);
-				i = end === -1 ? text.length : end + 1;
-				continue;
-			}
-			if (next === CHAR_ASTERISK) {
-				const end = text.indexOf('*/', i + 2);
-				if (end === -1) {
-					return -1;
-				}
-				i = end + 2;
-				continue;
-			}
-			i++;
-			continue;
-		}
+    if (code === CHAR_SLASH) {
+      const next = charCodeAt(text, i + 1);
+      if (next === CHAR_SLASH) {
+        const end = text.indexOf('\n', i + 2);
+        i = end === -1 ? text.length : end + 1;
+        continue;
+      }
+      if (next === CHAR_ASTERISK) {
+        const end = text.indexOf('*/', i + 2);
+        if (end === -1) {
+          return -1;
+        }
+        i = end + 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
 
-		if (code === CHAR_QUOTE) {
-			const end = skipInterpretedString(text, i);
-			if (end === -1) {
-				return -1;
-			}
-			i = end;
-			continue;
-		}
+    if (code === CHAR_QUOTE) {
+      const end = skipInterpretedString(text, i);
+      if (end === -1) {
+        return -1;
+      }
+      i = end;
+      continue;
+    }
 
-		if (code === CHAR_BACKTICK) {
-			const end = text.indexOf('`', i + 1);
-			if (end === -1) {
-				return -1;
-			}
-			i = end + 1;
-			continue;
-		}
+    if (code === CHAR_BACKTICK) {
+      const end = text.indexOf('`', i + 1);
+      if (end === -1) {
+        return -1;
+      }
+      i = end + 1;
+      continue;
+    }
 
-		if (code === CHAR_APOSTROPHE) {
-			const end = skipRune(text, i);
-			if (end === -1) {
-				return -1;
-			}
-			i = end;
-			continue;
-		}
+    if (code === CHAR_APOSTROPHE) {
+      const end = skipRune(text, i);
+      if (end === -1) {
+        return -1;
+      }
+      i = end;
+      continue;
+    }
 
-		if (code === open) {
-			depth++;
-		} else if (code === close) {
-			depth--;
-			if (depth === 0) {
-				return i;
-			}
-		}
-		i++;
-	}
-	return -1;
+    if (code === open) {
+      depth++;
+    } else if (code === close) {
+      depth--;
+      if (depth === 0) {
+        return i;
+      }
+    }
+    i++;
+  }
+  return -1;
 }
 
 interface ParsedFunc {
-	readonly decl: RawDecl;
-	/** Where the caller should resume scanning. */
-	readonly resumeAt: number;
+  readonly decl: RawDecl;
+  /** Where the caller should resume scanning. */
+  readonly resumeAt: number;
 }
 
 /**
@@ -260,97 +267,97 @@ interface ParsedFunc {
  * top-level test function.
  */
 function parseFuncDecl(text: string, funcOffset: number): ParsedFunc | null {
-	let i = skipSpace(text, funcOffset + 4);
+  let i = skipSpace(text, funcOffset + 4);
 
-	// `func` may be followed by a receiver. A function literal also starts
-	// with a parenthesis, but it has no name after it, which is detected
-	// below.
-	let hasReceiver = false;
-	if (charCodeAt(text, i) === CHAR_OPEN_PAREN) {
-		hasReceiver = true;
-		const end = matchBracket(text, i, CHAR_OPEN_PAREN, CHAR_CLOSE_PAREN);
-		if (end === -1) {
-			return null;
-		}
-		i = skipSpace(text, end + 1);
-	}
+  // `func` may be followed by a receiver. A function literal also starts
+  // with a parenthesis, but it has no name after it, which is detected
+  // below.
+  let hasReceiver = false;
+  if (charCodeAt(text, i) === CHAR_OPEN_PAREN) {
+    hasReceiver = true;
+    const end = matchBracket(text, i, CHAR_OPEN_PAREN, CHAR_CLOSE_PAREN);
+    if (end === -1) {
+      return null;
+    }
+    i = skipSpace(text, end + 1);
+  }
 
-	if (!isIdentStart(charCodeAt(text, i))) {
-		return null;
-	}
-	const nameStart = i;
-	while (isIdentPart(charCodeAt(text, i))) {
-		i++;
-	}
-	const name = text.substring(nameStart, i);
+  if (!isIdentStart(charCodeAt(text, i))) {
+    return null;
+  }
+  const nameStart = i;
+  while (isIdentPart(charCodeAt(text, i))) {
+    i++;
+  }
+  const name = text.substring(nameStart, i);
 
-	// A method is not a test, however it is named.
-	if (hasReceiver) {
-		return null;
-	}
-	if (!name.startsWith('Test')) {
-		return null;
-	}
+  // A method is not a test, however it is named.
+  if (hasReceiver) {
+    return null;
+  }
+  if (!name.startsWith('Test')) {
+    return null;
+  }
 
-	// A generic function has its type parameters between the name and the
-	// parameter list.
-	i = skipSpace(text, i);
-	if (charCodeAt(text, i) === CHAR_OPEN_BRACKET) {
-		const end = matchBracket(text, i, CHAR_OPEN_BRACKET, CHAR_CLOSE_BRACKET);
-		if (end === -1) {
-			return null;
-		}
-		i = skipSpace(text, end + 1);
-	}
+  // A generic function has its type parameters between the name and the
+  // parameter list.
+  i = skipSpace(text, i);
+  if (charCodeAt(text, i) === CHAR_OPEN_BRACKET) {
+    const end = matchBracket(text, i, CHAR_OPEN_BRACKET, CHAR_CLOSE_BRACKET);
+    if (end === -1) {
+      return null;
+    }
+    i = skipSpace(text, end + 1);
+  }
 
-	// A test function takes parameters; `func TestFoo` on its own is not one.
-	if (charCodeAt(text, i) !== CHAR_OPEN_PAREN) {
-		return null;
-	}
-	const paramsEnd = matchBracket(text, i, CHAR_OPEN_PAREN, CHAR_CLOSE_PAREN);
-	if (paramsEnd === -1) {
-		return null;
-	}
-	const params = text.substring(i + 1, paramsEnd);
+  // A test function takes parameters; `func TestFoo` on its own is not one.
+  if (charCodeAt(text, i) !== CHAR_OPEN_PAREN) {
+    return null;
+  }
+  const paramsEnd = matchBracket(text, i, CHAR_OPEN_PAREN, CHAR_CLOSE_PAREN);
+  if (paramsEnd === -1) {
+    return null;
+  }
+  const params = text.substring(i + 1, paramsEnd);
 
-	return {
-		decl: {
-			name,
-			nameOffset: nameStart,
-			usesTesting: /testing\.[TBF]\b/.test(params)
-		},
-		resumeAt: nameStart + name.length
-	};
+  return {
+    decl: {
+      name,
+      nameOffset: nameStart,
+      usesTesting: /testing\.[TBF]\b/.test(params),
+    },
+    resumeAt: nameStart + name.length,
+  };
 }
 
 /**
  * Builds the offset at which each line starts.
  */
 function buildLineIndex(text: string): number[] {
-	const starts: number[] = [0];
-	for (let i = 0; i < text.length; i++) {
-		if (text.charCodeAt(i) === CHAR_NEWLINE) {
-			starts.push(i + 1);
-		}
-	}
-	return starts;
+  const starts: number[] = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === CHAR_NEWLINE) {
+      starts.push(i + 1);
+    }
+  }
+  return starts;
 }
 
 /**
  * Converts an offset into a zero-based line and column.
  */
 function lineAndColumn(lineStarts: number[], offset: number): { line: number; column: number } {
-	let low = 0;
-	let high = lineStarts.length - 1;
-	while (low < high) {
-		const mid = Math.ceil((low + high) / 2);
-		if (lineStarts[mid] <= offset) {
-			low = mid;
-		} else {
-			high = mid - 1;
-		}
-	}
-	return { line: low, column: offset - lineStarts[low] };
+  let low = 0;
+  let high = lineStarts.length - 1;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (lineStarts[mid] <= offset) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return { line: low, column: offset - lineStarts[low] };
 }
 
 /**
@@ -359,117 +366,121 @@ function lineAndColumn(lineStarts: number[], offset: number): { line: number; co
  * @param text the contents of a Go source file.
  */
 export function scanGoSource(text: string): ScanResult {
-	const raw: RawDecl[] = [];
-	let i = 0;
-	let depth = 0;
-	let confident = true;
-	let reason: string | undefined;
+  const raw: RawDecl[] = [];
+  let i = 0;
+  let depth = 0;
+  let confident = true;
+  let reason: string | undefined;
 
-	while (i < text.length) {
-		const code = text.charCodeAt(i);
+  while (i < text.length) {
+    const code = text.charCodeAt(i);
 
-		if (code === CHAR_SLASH) {
-			const next = charCodeAt(text, i + 1);
-			if (next === CHAR_SLASH) {
-				const end = text.indexOf('\n', i + 2);
-				i = end === -1 ? text.length : end + 1;
-				continue;
-			}
-			if (next === CHAR_ASTERISK) {
-				const end = text.indexOf('*/', i + 2);
-				if (end === -1) {
-					confident = false;
-					reason = 'unterminated block comment';
-					break;
-				}
-				i = end + 2;
-				continue;
-			}
-			i++;
-			continue;
-		}
+    if (code === CHAR_SLASH) {
+      const next = charCodeAt(text, i + 1);
+      if (next === CHAR_SLASH) {
+        const end = text.indexOf('\n', i + 2);
+        i = end === -1 ? text.length : end + 1;
+        continue;
+      }
+      if (next === CHAR_ASTERISK) {
+        const end = text.indexOf('*/', i + 2);
+        if (end === -1) {
+          confident = false;
+          reason = 'unterminated block comment';
+          break;
+        }
+        i = end + 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
 
-		if (code === CHAR_QUOTE) {
-			const end = skipInterpretedString(text, i);
-			if (end === -1) {
-				confident = false;
-				reason = 'unterminated string literal';
-				break;
-			}
-			i = end;
-			continue;
-		}
+    if (code === CHAR_QUOTE) {
+      const end = skipInterpretedString(text, i);
+      if (end === -1) {
+        confident = false;
+        reason = 'unterminated string literal';
+        break;
+      }
+      i = end;
+      continue;
+    }
 
-		if (code === CHAR_BACKTICK) {
-			const end = text.indexOf('`', i + 1);
-			if (end === -1) {
-				confident = false;
-				reason = 'unterminated raw string literal';
-				break;
-			}
-			i = end + 1;
-			continue;
-		}
+    if (code === CHAR_BACKTICK) {
+      const end = text.indexOf('`', i + 1);
+      if (end === -1) {
+        confident = false;
+        reason = 'unterminated raw string literal';
+        break;
+      }
+      i = end + 1;
+      continue;
+    }
 
-		if (code === CHAR_APOSTROPHE) {
-			const end = skipRune(text, i);
-			if (end === -1) {
-				confident = false;
-				reason = 'unterminated rune literal';
-				break;
-			}
-			i = end;
-			continue;
-		}
+    if (code === CHAR_APOSTROPHE) {
+      const end = skipRune(text, i);
+      if (end === -1) {
+        confident = false;
+        reason = 'unterminated rune literal';
+        break;
+      }
+      i = end;
+      continue;
+    }
 
-		if (code === CHAR_OPEN_BRACE) {
-			depth++;
-			i++;
-			continue;
-		}
+    if (code === CHAR_OPEN_BRACE) {
+      depth++;
+      i++;
+      continue;
+    }
 
-		if (code === CHAR_CLOSE_BRACE) {
-			if (depth > 0) {
-				depth--;
-			}
-			i++;
-			continue;
-		}
+    if (code === CHAR_CLOSE_BRACE) {
+      if (depth > 0) {
+        depth--;
+      }
+      i++;
+      continue;
+    }
 
-		if (code === CHAR_LOWER_F && depth === 0 && text.startsWith('func', i)
-			&& !isIdentPart(charCodeAt(text, i - 1))
-			&& !isIdentPart(charCodeAt(text, i + 4))) {
-			const parsed = parseFuncDecl(text, i);
-			if (parsed) {
-				raw.push(parsed.decl);
-				i = parsed.resumeAt;
-				continue;
-			}
-			i += 4;
-			continue;
-		}
+    if (
+      code === CHAR_LOWER_F &&
+      depth === 0 &&
+      text.startsWith('func', i) &&
+      !isIdentPart(charCodeAt(text, i - 1)) &&
+      !isIdentPart(charCodeAt(text, i + 4))
+    ) {
+      const parsed = parseFuncDecl(text, i);
+      if (parsed) {
+        raw.push(parsed.decl);
+        i = parsed.resumeAt;
+        continue;
+      }
+      i += 4;
+      continue;
+    }
 
-		i++;
-	}
+    i++;
+  }
 
-	if (confident && depth !== 0) {
-		confident = false;
-		reason = 'unbalanced braces';
-	}
+  if (confident && depth !== 0) {
+    confident = false;
+    reason = 'unbalanced braces';
+  }
 
-	const lineStarts = buildLineIndex(text);
-	const declarations: GoTestDecl[] = raw.map(decl => {
-		const { line, column } = lineAndColumn(lineStarts, decl.nameOffset);
-		return {
-			name: decl.name,
-			line,
-			startChar: column,
-			endChar: column + decl.name.length,
-			usesTesting: decl.usesTesting
-		};
-	});
+  const lineStarts = buildLineIndex(text);
+  const declarations: GoTestDecl[] = raw.map((decl) => {
+    const { line, column } = lineAndColumn(lineStarts, decl.nameOffset);
+    return {
+      name: decl.name,
+      line,
+      startChar: column,
+      endChar: column + decl.name.length,
+      usesTesting: decl.usesTesting,
+    };
+  });
 
-	return { declarations, confident, reason };
+  return { declarations, confident, reason };
 }
 
 /**
@@ -478,6 +489,6 @@ export function scanGoSource(text: string): ScanResult {
  * @param filePath the path of the file to scan.
  */
 export async function scanGoFile(filePath: string): Promise<ScanResult> {
-	const text = await fs.promises.readFile(filePath, 'utf8');
-	return scanGoSource(text);
+  const text = await fs.promises.readFile(filePath, 'utf8');
+  return scanGoSource(text);
 }

@@ -5,15 +5,15 @@ import path = require('path');
  * A Go module.
  */
 export interface GoModule {
-	/**
-	 * The directory that holds the `go.mod` file.
-	 */
-	readonly root: string;
-	/**
-	 * The module path, e.g. `example.com/mod`. It is the first part of the
-	 * import path of every package of the module.
-	 */
-	readonly path: string;
+  /**
+   * The directory that holds the `go.mod` file.
+   */
+  readonly root: string;
+  /**
+   * The module path, e.g. `example.com/mod`. It is the first part of the
+   * import path of every package of the module.
+   */
+  readonly path: string;
 }
 
 /**
@@ -26,20 +26,20 @@ export interface GoModule {
  * @returns the module, or undefined when the directory is not in one.
  */
 export function findGoModule(dir: string): GoModule | undefined {
-	let current = path.resolve(dir);
-	for (;;) {
-		const modFile = path.join(current, 'go.mod');
-		if (fs.existsSync(modFile)) {
-			const modulePath = readModulePath(modFile);
-			return modulePath ? { root: current, path: modulePath } : undefined;
-		}
-		const parent = path.dirname(current);
-		if (parent === current) {
-			// The root of the file system was reached without finding one.
-			return undefined;
-		}
-		current = parent;
-	}
+  let current = path.resolve(dir);
+  for (;;) {
+    const modFile = path.join(current, 'go.mod');
+    if (fs.existsSync(modFile)) {
+      const modulePath = readModulePath(modFile);
+      return modulePath ? { root: current, path: modulePath } : undefined;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      // The root of the file system was reached without finding one.
+      return undefined;
+    }
+    current = parent;
+  }
 }
 
 /**
@@ -49,21 +49,21 @@ export function findGoModule(dir: string): GoModule | undefined {
  * @returns the module path, or undefined when the file has none.
  */
 function readModulePath(modFile: string): string | undefined {
-	let content: string;
-	try {
-		content = fs.readFileSync(modFile, 'utf8');
-	} catch (e) {
-		return undefined;
-	}
-	for (const line of content.split('\n')) {
-		// The directive is at the start of a line, and its path may be
-		// quoted.
-		const match = /^\s*module\s+("[^"]+"|\S+)/.exec(line);
-		if (match) {
-			return match[1].replace(/^"|"$/g, '');
-		}
-	}
-	return undefined;
+  let content: string;
+  try {
+    content = fs.readFileSync(modFile, 'utf8');
+  } catch (e) {
+    return undefined;
+  }
+  for (const line of content.split('\n')) {
+    // The directive is at the start of a line, and its path may be
+    // quoted.
+    const match = /^\s*module\s+("[^"]+"|\S+)/.exec(line);
+    if (match) {
+      return match[1].replace(/^"|"$/g, '');
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -77,6 +77,6 @@ function readModulePath(modFile: string): string | undefined {
  * @returns the import path of the package.
  */
 export function importPathOf(module: GoModule, dir: string): string {
-	const relative = path.relative(module.root, dir).split(path.sep).join('/');
-	return relative === '' ? module.path : module.path + '/' + relative;
+  const relative = path.relative(module.root, dir).split(path.sep).join('/');
+  return relative === '' ? module.path : module.path + '/' + relative;
 }

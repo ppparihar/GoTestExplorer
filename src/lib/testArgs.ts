@@ -20,7 +20,7 @@ export const DEFAULT_TEST_TIMEOUT = '30s';
  * which also matches unrelated tests such as `AExtra` or `XB`.
  */
 export function buildRunRegex(testFunctions: string[]): string {
-	return `^(${testFunctions.join('|')})$`;
+  return `^(${testFunctions.join('|')})$`;
 }
 
 /**
@@ -31,37 +31,37 @@ export function buildRunRegex(testFunctions: string[]): string {
  * test` rejects the literal string "undefined" as an invalid duration.
  */
 export function resolveTestTimeout(configured: unknown): string {
-	if (typeof configured === 'string' && configured.trim()) {
-		return configured.trim();
-	}
-	return DEFAULT_TEST_TIMEOUT;
+  if (typeof configured === 'string' && configured.trim()) {
+    return configured.trim();
+  }
+  return DEFAULT_TEST_TIMEOUT;
 }
 
 /**
  * The subset of {@link TestConfig} needed to build the run target arguments.
  */
 export interface TargetArgsInput {
-	/** Specific test function names to run. */
-	functions?: string[];
-	/** Whether the target is a benchmark rather than a test. */
-	isBenchmark?: boolean;
+  /** Specific test function names to run. */
+  functions?: string[];
+  /** Whether the target is a benchmark rather than a test. */
+  isBenchmark?: boolean;
 }
 
 /**
  * Builds the test-target arguments (`-run` / `-bench`) for a `go test` invocation.
  */
 export function buildTargetArgs(input: TargetArgsInput): string[] {
-	if (input.functions) {
-		if (input.isBenchmark) {
-			return ['-bench', buildRunRegex(input.functions)];
-		}
-		if (input.functions.length > 0) {
-			return ['-run', buildRunRegex(input.functions)];
-		}
-		return [];
-	}
-	if (input.isBenchmark) {
-		return ['-bench', '.'];
-	}
-	return [];
+  if (input.functions) {
+    if (input.isBenchmark) {
+      return ['-bench', buildRunRegex(input.functions)];
+    }
+    if (input.functions.length > 0) {
+      return ['-run', buildRunRegex(input.functions)];
+    }
+    return [];
+  }
+  if (input.isBenchmark) {
+    return ['-bench', '.'];
+  }
+  return [];
 }

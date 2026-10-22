@@ -19,7 +19,7 @@
     "activationEvents": [
         "onView:goTestExplorer"
     ],
-    "main": "./out/extension",
+    "main": "./dist/extension.js",
     "contributes": {
         "configuration": {
             "title": "Go Test Explorer",
@@ -209,21 +209,35 @@
         ]
     },
     "scripts": {
-        "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
+        "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+        "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
         "typecheck": "tsc -p ./ --noEmit && tsc -p ./bench --noEmit",
         "test": "npm run typecheck && vitest run",
         "test:watch": "vitest",
         "bench": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/run-bench.ts",
         "bench:discovery": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/discovery-bench.ts",
-        "bench:exec": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/exec-bench.ts"
+        "bench:exec": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/exec-bench.ts",
+        "lint": "eslint src",
+        "format": "prettier --write src",
+        "format:check": "prettier --check src",
+        "compile:tsc": "tsc -p ./",
+        "vscode:prepublish": "npm run compile",
+        "package": "vsce package",
+        "package:dry": "vsce package --out /dev/null"
     },
     "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/eslint__js": "^8.42.3",
         "@types/node": "^20.19.43",
         "@types/vscode": "~1.85.0",
+        "esbuild": "^0.28.2",
+        "eslint": "^10.13.0",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-prettier": "^5.5.7",
+        "prettier": "^3.9.10",
         "tsx": "^4.23.15",
         "typescript": "^5.9.3",
+        "typescript-eslint": "^8.72.0",
         "vitest": "^2.1.9"
     },
     "repository": {
