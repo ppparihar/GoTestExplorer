@@ -1,7 +1,7 @@
 {
     "name": "gotestexplorer",
     "displayName": "Go Test Explorer",
-    "description": "Go Test Explorer",
+    "description": "Run and explore Go tests in a tree view",
     "version": "0.1.13",
     "publisher": "premparihar",
     "engines": {
@@ -11,10 +11,11 @@
         "go",
         "test",
         "gotest",
-        "unit test"
+        "unit test",
+        "testing"
     ],
     "categories": [
-        "Other"
+        "Testing"
     ],
     "activationEvents": [
         "onView:goTestExplorer"
