@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  addCoverage,
   coveragePercent,
   markedLines,
   mergeCoverProfiles,
@@ -17,8 +18,8 @@ describe('parseCoverProfile', () => {
     const profile = parseCoverProfile(PROFILE);
     expect(Array.from(profile.keys())).toEqual(['example.com/mod/a.go', 'example.com/mod/b.go']);
     expect(profile.get('example.com/mod/a.go')).toEqual([
-      { startLine: 3, endLine: 5, statements: 1, count: 1 },
-      { startLine: 7, endLine: 9, statements: 2, count: 0 },
+      { startLine: 3, startCol: 14, endLine: 5, endCol: 2, statements: 1, count: 1 },
+      { startLine: 7, startCol: 2, endLine: 9, endCol: 3, statements: 2, count: 0 },
     ]);
   });
 
@@ -41,8 +42,8 @@ describe('markedLines', () => {
 
   it('counts a line shared with a block that did not run as uncovered', () => {
     const lines = markedLines([
-      { startLine: 1, endLine: 2, statements: 1, count: 1 },
-      { startLine: 2, endLine: 3, statements: 1, count: 0 },
+      { startLine: 1, startCol: 1, endLine: 2, endCol: 2, statements: 1, count: 1 },
+      { startLine: 2, startCol: 1, endLine: 3, endCol: 2, statements: 1, count: 0 },
     ]);
     expect(lines.covered).toEqual([0]);
     expect(lines.uncovered).toEqual([1, 2]);
@@ -67,5 +68,29 @@ describe('mergeCoverProfiles', () => {
     const merged = mergeCoverProfiles([first, second]);
     expect(merged.get('x/a.go')![0].count).toBe(1);
     expect(merged.size).toBe(2);
+  });
+});
+
+describe('addCoverage', () => {
+  const block = (startLine: number, count: number) => ({
+    startLine,
+    startCol: 1,
+    endLine: startLine,
+    endCol: 9,
+    statements: 1,
+    count,
+  });
+
+  it('never takes back what an earlier run covered', () => {
+    const merged = addCoverage([block(1, 2), block(2, 0)], [block(1, 0), block(2, 1)]);
+    expect(merged.map((b) => b.count > 0)).toEqual([true, true]);
+  });
+
+  it('adds the counts of the same block', () => {
+    expect(addCoverage([block(1, 2)], [block(1, 3)])[0].count).toBe(5);
+  });
+
+  it('keeps a block that only one of them has', () => {
+    expect(addCoverage([block(1, 1)], [block(2, 0)]).length).toBe(2);
   });
 });

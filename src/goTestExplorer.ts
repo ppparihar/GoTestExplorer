@@ -82,6 +82,8 @@ export class GoTestExplorer {
     });
     context.subscriptions.push(this.treeView);
     this.coverage = new CoverageDecorations();
+    // The tree follows the coverage, whatever changed it: a run, or a save.
+    this.coverage.onDidChange(() => this.showCoverageSummary());
     context.subscriptions.push(this.coverage);
 
     context.subscriptions.push(
@@ -282,8 +284,8 @@ export class GoTestExplorer {
         files.set(path.join(module.root, ...name.slice(prefix.length).split('/')), blocks);
       }
     });
-    this.coverage.update(this.scopeOfRun(testConfig, files));
-    this.showCoverageSummary();
+    const wholeModule = !!testConfig.packages && testConfig.packages.length > 0;
+    this.coverage.update(this.scopeOfRun(testConfig, files), wholeModule ? 'replace' : 'add');
   }
 
   /**
@@ -401,7 +403,7 @@ export class GoTestExplorer {
     const lines = [this.filterMessage];
     if (this.coverageEnabled) {
       lines.push(
-        'Coverage is on: run tests here and the lines they ran are marked green, the lines they did not red.',
+        'Coverage is on: lines the tests ran are green, lines they did not are red. Running a file or a test adds to the coverage, Run All starts it again.',
       );
     }
     const text = lines.filter(Boolean).join('\n');

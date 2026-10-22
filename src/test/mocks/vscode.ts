@@ -541,6 +541,7 @@ export class MockQuickPick {
 
 export const __state = {
   quickPicks: [] as MockQuickPick[],
+  saveListeners: [] as Array<(document: { uri: Uri }) => void>,
   shownDocuments: [] as unknown[],
   /** Chooses the item a `showQuickPick` call returns. */
   quickPickAnswer: undefined as undefined | ((items: unknown[]) => unknown),
@@ -653,6 +654,7 @@ export function __reset(): void {
   __state.documentTexts.clear();
   __state.fileWatchers = [];
   __state.quickPicks = [];
+  __state.saveListeners = [];
   __state.shownDocuments = [];
   __state.quickPickAnswer = undefined;
   __state.visibleTextEditors = [];
@@ -704,6 +706,10 @@ export const workspace = {
       fileName: uri.fsPath,
       positionAt: (offset: number) => new Position(0, offset),
     });
+  },
+  onDidSaveTextDocument(listener: (document: { uri: Uri }) => void): Disposable {
+    __state.saveListeners.push(listener);
+    return new Disposable();
   },
   createFileSystemWatcher(glob?: string): MockFileSystemWatcher {
     const watcher = new MockFileSystemWatcher(glob);

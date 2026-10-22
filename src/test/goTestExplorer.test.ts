@@ -369,8 +369,8 @@ describe('GoTestExplorer runs a whole module', () => {
         [
           'example.com/mod/pkg/a/a.go',
           [
-            { startLine: 1, endLine: 2, statements: 1, count: 1 },
-            { startLine: 4, endLine: 5, statements: 1, count: 0 },
+            { startLine: 1, startCol: 1, endLine: 2, endCol: 2, statements: 1, count: 1 },
+            { startLine: 4, startCol: 1, endLine: 5, endCol: 2, statements: 1, count: 0 },
           ],
         ],
       ]);
@@ -439,55 +439,76 @@ describe('GoTestExplorer runs a whole module', () => {
       expect((await explorer.goTestProvider.getChildren())[0]).toBe(a);
     });
 
-    it('lets a run of one test file change only the file it tests', async () => {
+    it('lets a run of one test file change only the file it tests, and never lowers it', async () => {
       const dir = path.join(moduleDir, 'pkg', 'a');
       const a = suiteIn(dir, 'a_test.go', ['TestAlpha']);
       const b = suiteIn(dir, 'b_test.go', ['TestBeta']);
       explorer.commands.sendDiscoveredTests([a, b]);
       const marksOfB = openEditor(path.join(dir, 'b.go'));
-      const block = (count: number) => [{ startLine: 1, endLine: 2, statements: 1, count }];
+      const block = (line: number, count: number) => ({
+        startLine: line,
+        startCol: 1,
+        endLine: line,
+        endCol: 9,
+        statements: 1,
+        count,
+      });
+      const profileOf = (a: number[], b: number[]) =>
+        new Map([
+          ['example.com/mod/pkg/a/a.go', a.map((count, i) => block(i + 1, count))],
+          ['example.com/mod/pkg/a/b.go', b.map((count, i) => block(i + 1, count))],
+        ]);
+      const finish = (coverage: ReturnType<typeof profileOf>) =>
+        runGoTest.mockResolvedValue(
+          new RawTestResult(true, [], [], undefined, new Map(), coverage),
+        );
+      const row = (suite: TestNode) => explorer.goTestProvider.getTreeItem(suite).description;
       await vscode.commands.executeCommand('goTestExplorer.showCoverage');
 
-      // The whole module ran: both files were covered.
-      runGoTest.mockResolvedValue(
-        new RawTestResult(
-          true,
-          [],
-          [],
-          undefined,
-          new Map(),
-          new Map([
-            ['example.com/mod/pkg/a/a.go', block(1)],
-            ['example.com/mod/pkg/a/b.go', block(1)],
-          ]),
-        ),
-      );
+      // The whole module ran: a.go is half covered, b.go is all covered.
+      finish(profileOf([1, 0], [1, 1]));
       await vscode.commands.executeCommand('goTestExplorer.runAllTest');
-      await waitFor(() => completed.length > 0);
-      expect(explorer.goTestProvider.getTreeItem(b).description).toBe('100.0%');
+      await waitFor(() => row(a) === '50.0%');
+      expect(row(b)).toBe('100.0%');
 
-      // Only the tests of a_test.go ran, and the tool reports b.go as not run.
+      // One test of a_test.go ran. It covers the other half of a.go, and the
+      // tool also reports b.go, which it did not run.
       const before = marksOfB.length;
-      runGoTest.mockResolvedValue(
-        new RawTestResult(
-          true,
-          [],
-          [],
-          undefined,
-          new Map(),
-          new Map([
-            ['example.com/mod/pkg/a/a.go', block(0)],
-            ['example.com/mod/pkg/a/b.go', block(0)],
-          ]),
-        ),
-      );
+      finish(profileOf([0, 1], [0, 0]));
       await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
-      await waitFor(() => explorer.goTestProvider.getTreeItem(a).description === '0.0%');
-
-      expect(explorer.goTestProvider.getTreeItem(b).description).toBe('100.0%');
-      // b.go is still marked as it was: all of it covered, none of it not.
+      await waitFor(() => row(a) === '100.0%');
+      expect(row(b)).toBe('100.0%');
+      // b.go is marked as it was: all of it covered, none of it not.
       expect(marksOfB.length).toBeGreaterThan(before);
       expect(marksOfB.slice(-2).map((m) => m.lines)).toEqual([[0, 1], []]);
+
+      // A run of one test that covers less does not take coverage back.
+      finish(profileOf([0, 0], [0, 0]));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => runGoTest.mock.calls.length >= 3);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(row(a)).toBe('100.0%');
+
+      // Run All starts over.
+      finish(profileOf([0, 0], [1, 1]));
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+      await waitFor(() => row(a) === '0.0%');
+    });
+
+    it('forgets the coverage of a file that is saved', async () => {
+      const dir = path.join(moduleDir, 'pkg', 'a');
+      const a = suiteIn(dir, 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => explorer.goTestProvider.getTreeItem(a).description === '50.0%');
+
+      __state.saveListeners.forEach((listener) =>
+        listener({ uri: Uri.file(path.join(dir, 'a.go')) }),
+      );
+
+      await waitFor(() => explorer.goTestProvider.getTreeItem(a).description === undefined);
     });
 
     it('shows the coverage beside each test file', async () => {

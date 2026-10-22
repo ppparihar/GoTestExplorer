@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { CoverBlock, coveragePercent, markedLines } from './lib/coverageProfile';
+import { addCoverage, CoverBlock, coveragePercent, markedLines } from './lib/coverageProfile';
 
 /**
  * Marks the lines that the tests ran, and the lines they did not, in the open
@@ -28,7 +28,13 @@ export class CoverageDecorations implements vscode.Disposable {
     0,
   );
   private readonly subscription: vscode.Disposable;
+  private readonly saveSubscription: vscode.Disposable;
   private enabled = false;
+  private readonly changed = new vscode.EventEmitter<void>();
+  /**
+   * What is known about the coverage changed.
+   */
+  readonly onDidChange = this.changed.event;
   /**
    * What the tests covered, keyed by the path of the file.
    */
@@ -39,6 +45,9 @@ export class CoverageDecorations implements vscode.Disposable {
     this.subscription = vscode.window.onDidChangeVisibleTextEditors(() => this.render());
     // A click on the percentage opens the report of the files.
     this.statusItem.command = 'goTestExplorer.showCoverageReport';
+    this.saveSubscription = vscode.workspace.onDidSaveTextDocument((document) =>
+      this.forget(document.uri.fsPath),
+    );
   }
 
   /**
@@ -63,12 +72,28 @@ export class CoverageDecorations implements vscode.Disposable {
   }
 
   /**
-   * Takes what a run covered. A file the run covered replaces what was known
-   * of it, and the files it did not cover keep what they had.
+   * Takes what a run covered.
+   *
+   * A run of a whole module replaces what was known of the files it covered.
+   * A run of part of a package adds to it, so that it never takes back what
+   * other runs covered.
    */
-  update(covered: ReadonlyMap<string, CoverBlock[]>): void {
-    covered.forEach((blocks, file) => this.files.set(file, blocks));
+  update(covered: ReadonlyMap<string, CoverBlock[]>, mode: 'replace' | 'add'): void {
+    covered.forEach((blocks, file) => {
+      const known = this.files.get(file);
+      this.files.set(file, mode === 'add' && known ? addCoverage(known, blocks) : blocks);
+    });
     this.render();
+  }
+
+  /**
+   * Forgets what is known of a file, because it has been edited since the
+   * tests ran and the marks would no longer be where the code is.
+   */
+  forget(file: string): void {
+    if (this.files.delete(file)) {
+      this.render();
+    }
   }
 
   /**
@@ -114,6 +139,7 @@ export class CoverageDecorations implements vscode.Disposable {
   }
 
   private render(): void {
+    this.changed.fire();
     for (const editor of vscode.window.visibleTextEditors) {
       const blocks = this.files.get(editor.document.uri.fsPath);
       const lines = blocks ? markedLines(blocks) : { covered: [], uncovered: [] };
@@ -138,8 +164,10 @@ export class CoverageDecorations implements vscode.Disposable {
 
   dispose(): void {
     this.subscription.dispose();
+    this.saveSubscription.dispose();
     this.coveredType.dispose();
     this.uncoveredType.dispose();
     this.statusItem.dispose();
+    this.changed.dispose();
   }
 }

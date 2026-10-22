@@ -12,8 +12,12 @@
 export interface CoverBlock {
   /** The first line of the block, counted from 1 as in the profile. */
   startLine: number;
+  /** The column the block starts at. */
+  startCol: number;
   /** The last line of the block, counted from 1 as in the profile. */
   endLine: number;
+  /** The column the block ends at. */
+  endCol: number;
   /** The number of statements in the block. */
   statements: number;
   /** How often the block ran. Zero means it was not covered. */
@@ -29,7 +33,7 @@ export type CoverProfile = Map<string, CoverBlock[]>;
 /**
  * A line of a profile: `name.go:12.3,14.2 2 1`.
  */
-const profileLine = /^(.+):(\d+)\.\d+,(\d+)\.\d+ (\d+) (\d+)$/;
+const profileLine = /^(.+):(\d+)\.(\d+),(\d+)\.(\d+) (\d+) (\d+)$/;
 
 /**
  * Reads the text of a cover profile. A line that is not a block, such as the
@@ -45,9 +49,11 @@ export function parseCoverProfile(text: string): CoverProfile {
     const blocks = profile.get(match[1]) ?? [];
     blocks.push({
       startLine: Number(match[2]),
-      endLine: Number(match[3]),
-      statements: Number(match[4]),
-      count: Number(match[5]),
+      startCol: Number(match[3]),
+      endLine: Number(match[4]),
+      endCol: Number(match[5]),
+      statements: Number(match[6]),
+      count: Number(match[7]),
     });
     profile.set(match[1], blocks);
   }
@@ -62,6 +68,28 @@ export function mergeCoverProfiles(profiles: readonly CoverProfile[]): CoverProf
   const merged: CoverProfile = new Map();
   profiles.forEach((profile) => profile.forEach((blocks, file) => merged.set(file, blocks)));
   return merged;
+}
+
+/**
+ * Adds what a run covered to what earlier runs covered of the same file.
+ *
+ * A block ran if it ran in either, so the result never has less coverage than
+ * what it started from: a run of one test does not take back what the other
+ * tests of the file had covered. A block is the same block when it has the
+ * same place in the file.
+ */
+export function addCoverage(
+  known: readonly CoverBlock[],
+  run: readonly CoverBlock[],
+): CoverBlock[] {
+  const key = (b: CoverBlock) => `${b.startLine}.${b.startCol},${b.endLine}.${b.endCol}`;
+  const merged = new Map<string, CoverBlock>();
+  known.forEach((block) => merged.set(key(block), block));
+  run.forEach((block) => {
+    const before = merged.get(key(block));
+    merged.set(key(block), before ? { ...before, count: before.count + block.count } : block);
+  });
+  return Array.from(merged.values());
 }
 
 /**
