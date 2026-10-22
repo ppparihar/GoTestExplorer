@@ -1,9 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { GoTestExplorer } from '../goTestExplorer';
 import { TestNode } from '../testNode';
 import { TestResult } from '../testResult';
 import { RawTestResult } from '../rawTestResult';
+import { PackageResult } from '../exec/goTestJsonParser';
 import { __reset, __setDocumentText, __state, Uri } from './mocks/vscode';
 
 const runGoTest = vi.fn();
@@ -147,6 +151,134 @@ describe('GoTestExplorer', () => {
 
 		expect(__state.messages.info.length).toBe(1);
 		expect(__state.messages.info[0]).toContain('No test run is in progress');
+	});
+});
+
+describe('GoTestExplorer runs a whole module', () => {
+	let explorer: GoTestExplorer;
+	let moduleDir: string;
+	let results: TestResult[];
+	let completed: vscode.Uri[][];
+
+	/**
+	 * A file that holds tests, in the package of the directory it is in.
+	 */
+	function suiteIn(dir: string, name: string, tests: string[]): TestNode {
+		fs.mkdirSync(dir, { recursive: true });
+		const uri = Uri.file(path.join(dir, name));
+		return new TestNode(name, uri, tests.map(test => new TestNode(test, uri)));
+	}
+
+	beforeEach(() => {
+		__reset();
+		runGoTest.mockReset();
+		runGoTest.mockResolvedValue(new RawTestResult(true, ['ok'], []));
+		explorer = new GoTestExplorer(fakeContext());
+		results = [];
+		completed = [];
+		explorer.commands.testResult((r: TestResult) => results.push(r));
+		explorer.commands.testCompleted((uris: vscode.Uri[]) => completed.push(uris));
+		moduleDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gtest-explorer-module-'));
+		fs.writeFileSync(path.join(moduleDir, 'go.mod'), 'module example.com/mod\n');
+	});
+
+	afterEach(() => {
+		fs.rmSync(moduleDir, { recursive: true, force: true });
+	});
+
+	it('runs every package of a module in one process', async () => {
+		const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestA']);
+		const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestB']);
+		explorer.commands.sendDiscoveredTests([a, b]);
+
+		await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+		await waitFor(() => runGoTest.mock.calls.length > 0);
+
+		expect(runGoTest.mock.calls.length).toBe(1);
+		const config = runGoTest.mock.calls[0][0];
+		expect(config.dir).toBe(moduleDir);
+		expect(config.packages.map((p: { importPath: string }) => p.importPath)).toEqual([
+			'example.com/mod/pkg/a',
+			'example.com/mod/pkg/b'
+		]);
+		expect(config.packages.map((p: { path: string }) => p.path)).toEqual(['pkg/a', 'pkg/b']);
+	});
+
+	it('runs the files of one package in one process', async () => {
+		const dir = path.join(moduleDir, 'pkg');
+		const a = suiteIn(dir, 'a_test.go', ['TestA']);
+		const b = suiteIn(dir, 'b_test.go', ['TestB']);
+		explorer.commands.sendDiscoveredTests([a, b]);
+
+		await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+		await waitFor(() => runGoTest.mock.calls.length > 0);
+
+		expect(runGoTest.mock.calls.length).toBe(1);
+		const config = runGoTest.mock.calls[0][0];
+		expect(config.packages.length).toBe(1);
+		expect(config.packages[0].files.map((f: { name: string }) => f.name)).toEqual(['a_test.go', 'b_test.go']);
+	});
+
+	it('attributes the outcome of a test to the package it belongs to', async () => {
+		const packages = new Map<string, PackageResult>();
+		packages.set('example.com/mod/pkg/a', {
+			package: 'example.com/mod/pkg/a',
+			tests: new Map(),
+			failedTests: ['TestA'],
+			output: ['a output'],
+			failed: true,
+			buildFailed: false
+		});
+		packages.set('example.com/mod/pkg/b', {
+			package: 'example.com/mod/pkg/b',
+			tests: new Map(),
+			failedTests: [],
+			output: ['b output'],
+			failed: false,
+			buildFailed: false
+		});
+		runGoTest.mockResolvedValue(new RawTestResult(false, [], ['TestA'], undefined, packages));
+
+		const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestA']);
+		const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestB']);
+		explorer.commands.sendDiscoveredTests([a, b]);
+
+		await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+		await waitFor(() => results.length > 0);
+
+		expect(results.find(r => r.testName === 'TestA')?.isPassed).toBe(false);
+		expect(results.find(r => r.testName === 'TestB')?.isPassed).toBe(true);
+		expect(results.find(r => r.testName === 'TestA')?.output).toEqual(['a output']);
+		expect(results.find(r => r.testName === 'TestB')?.output).toEqual(['b output']);
+	});
+
+	it('reports the outcome of every file of the run', async () => {
+		const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestA']);
+		const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestB']);
+		explorer.commands.sendDiscoveredTests([a, b]);
+
+		await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+		await waitFor(() => completed.length > 0);
+
+		expect(completed.length).toBe(1);
+		expect(completed[0].map(uri => path.basename(uri.fsPath))).toEqual(['a_test.go', 'b_test.go']);
+	});
+
+	it('runs the files that are not in a module one by one', async () => {
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'gtest-explorer-nomodule-'));
+		try {
+			const a = suiteIn(outside, 'a_test.go', ['TestA']);
+			const b = suiteIn(outside, 'b_test.go', ['TestB']);
+			explorer.commands.sendDiscoveredTests([a, b]);
+
+			await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+			await waitFor(() => runGoTest.mock.calls.length > 1);
+
+			expect(runGoTest.mock.calls.length).toBe(2);
+			expect(runGoTest.mock.calls[0][0].packages).toBeUndefined();
+		} finally {
+			fs.rmSync(outside, { recursive: true, force: true });
+		}
 	});
 });
 

@@ -8,7 +8,7 @@ export class Commands {
     private readonly onTestDiscoveryStartedEmitter = new EventEmitter<void>();
     private readonly onTestRunStartedEmitter = new EventEmitter<TestNode[]>();
     private readonly onTestResultEmitter = new EventEmitter<TestResult>();
-    private readonly onTestCompletedEmitter = new EventEmitter<Uri>();
+    private readonly onTestCompletedEmitter = new EventEmitter<Uri[]>();
     private readonly onTestFileChangedEmitter = new EventEmitter<TestNode>();
     private readonly onTestFileRemovedEmitter = new EventEmitter<string>();
 
@@ -45,14 +45,18 @@ export class Commands {
     }
 
     /**
-     * The run of the file that holds the given URI has finished, so the tree
-     * can be redrawn once with the outcome of every test of that run.
+     * The run that covers the given files has finished, so the tree can be
+     * redrawn once with the outcome of every test of that run.
+     *
+     * A run that tests one file names one URI. A run that tests several
+     * packages names every file it covered, so that the tree is redrawn once
+     * for all of them.
      */
-    public get testCompleted(): Event<Uri> {
+    public get testCompleted(): Event<Uri[]> {
         return this.onTestCompletedEmitter.event;
     }
-    public sendTestCompleted(testUri: Uri) :void {
-        this.onTestCompletedEmitter.fire(testUri);
+    public sendTestCompleted(testUris: Uri[]) :void {
+        this.onTestCompletedEmitter.fire(testUris);
     }
 
     /**

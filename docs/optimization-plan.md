@@ -124,10 +124,10 @@ Each phase is independently shippable and independently verifiable.
 
 | Phase | Status | Evidence |
 |---|---|---|
-| Phase 0 — Baseline and test harness | Done | `npm test` runs 179 assertions across 12 files; `npm run bench` writes `bench/results/baseline.json` |
+| Phase 0 — Baseline and test harness | Done | `npm test` runs 205 assertions across 13 files; `npm run bench` writes `bench/results/baseline.json` |
 | Phase 1 — Correctness fixes | Done | C1–C12 applied; each fix has a regression test in `src/test/` |
 | Phase 2 — Discovery performance | Done | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0; a refresh over a warm cache costs 3.6 ms and a saved file reaches the tree without a manual refresh |
-| Phase 3 — Execution performance | In progress | 3a–3d done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, the tree is redrawn once per run instead of once per test, and a run can be cancelled — the whole process tree included |
+| Phase 3 — Execution performance | In progress | 3a–3e done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, the tree is redrawn once per run instead of once per test, a run can be cancelled — the whole process tree included — and "Run All" tests every package of a module in one process |
 | Phase 4 — Toolchain and delivery | Partially done | TypeScript 5, `@types/vscode` 1.85, Vitest, `tsx` landed as Phase 0 prerequisites; the rest of Phase 4 is still open |
 | Phase 5 — Native Testing API | Not started | Deferred |
 | Phase 6 — Feature parity | Not started | Deferred |
@@ -327,7 +327,8 @@ times. Now the tests of a run are reported in one event, the outcome of each
 test is applied to its node as it arrives, and the tree is redrawn once when
 the run has finished — for the node that holds the tests, so only that part of
 the tree is redrawn. `testCompleted` carries the URI of the file whose run
-finished, which is what the redraw is aimed at.
+finished, which is what the redraw is aimed at. A run that covers several
+files carries every one of them, and the whole tree is redrawn once (3e).
 
 **3d. Cancellation** — `src/lib/testUtil.ts:16` exposes `runningTestProcesses`; wire a "Cancel Test Run" command and `CancellationToken` support, killing the child process tree. — **Done**
 
@@ -347,9 +348,36 @@ group is killed with a negative pid. On Windows, which has no process groups,
 extension host, so `deactivate()` stops the runs that are still going when the
 window closes.
 
-**3e. Single process for "Run All"**
+**3e. Single process for "Run All"** — **Done**
 
 Where the selection spans multiple packages, run one `go test ./...` (or one `go test <pkgs>`) instead of one process per package — one compile pass instead of N.
+
+**Done.** "Run All" no longer runs one process per file. The files are
+grouped by the module they belong to — the nearest `go.mod` decides, so a
+module inside another module is a module of its own — and one run tests all
+the packages of a module at once: the tool compiles them in one pass and
+decides how to spread them over the available cores. The run is started in the
+root of the module and names the packages it tests (`go test ./pkg/a ./pkg/b`),
+so the tool is given the packages and not the files.
+
+A run of several packages has **no filter on the names of the tests**: a
+`-run` filter applies to every package of the run, and would keep a test that
+was asked for from running in a package where it was asked for. The outcome of
+a test is therefore read from the package it belongs to: the parser reports
+the outcome of every package separately, and the extension matches it to the
+files of that package. A failure in one package does not mark the tests of
+another one as failed, and the output shown for a test is the output of its
+own package.
+
+A directory that is not in a module — a `GOPATH` workspace — is run the way it
+was before, one process for each file, because there is no module to name its
+packages in.
+
+The import path of a package is what the tool reports it as, and it is what
+the outcome is matched against: the module path of the `go.mod` file, plus the
+path of the package relative to the module root. It is computed rather than
+guessed, because a suffix match picks the wrong package in a workspace that
+holds more than one module.
 
 **3f. Output handling**
 
@@ -363,7 +391,7 @@ Add `contributes.configuration` for: `maxParallelTests`, `skipFolders`, `goPath`
 
 **Exit criteria:**
 - A subtest failure marks its parent test failed. **Met** — the failed test is `TestAlpha/sub` and `TestAlpha` is reported as failed; `src/test/goTestExplorer.test.ts` covers it.
-- "Run All" across 10 packages spawns **1** `go test` process. **Open** — 3e.
+- "Run All" across 10 packages spawns **1** `go test` process. **Met** — the files of a module are run in one process, which names the ten packages; `src/test/goTestExplorer.test.ts` proves that one process is spawned for the packages of a module, and `src/test/runGoTest.test.ts` runs the real toolchain against two packages and reads the outcome of each of them.
 - A test run can be cancelled from the UI. **Met** — the "Cancel Test Run" command drops the runs that have not started and kills the ones that are running, and the whole process tree dies with them; `src/test/runGoTest.test.ts` proves that the test binary is gone after a cancellation, and `src/test/testQueue.test.ts` covers the queue.
 - The tree re-renders once per package, not once per test. **Met** — a suite of twenty tests redraws the tree once, when the run finishes; `src/test/goTestProvider.test.ts` counts the redraws.
 

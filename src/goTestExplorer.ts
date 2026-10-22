@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { GoTestProvider } from './goTestProvider';
-import { runGoTest, TestConfig, cancelRunningTests } from './lib/testUtil';
+import { runGoTest, TestConfig, TestPackage, cancelRunningTests } from './lib/testUtil';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
@@ -10,7 +10,26 @@ import { TestDiscovery } from './testDiscovery';
 import { Config } from './config';
 import { TestQueue } from './runner/testQueue';
 import { scanGoSource } from './discovery/goScanner';
-import { hasFailed } from './exec/goTestJsonParser';
+import { hasFailed, PackageResult } from './exec/goTestJsonParser';
+import { findGoModule, GoModule, importPathOf } from './lib/goModule';
+
+/**
+ * The files of one module, and the packages they belong to.
+ */
+interface ModuleGroup {
+	/**
+	 * The module the files belong to.
+	 */
+	module: GoModule;
+	/**
+	 * The packages of the module that hold tests.
+	 */
+	packages: TestPackage[];
+	/**
+	 * The files that hold tests.
+	 */
+	suites: TestNode[];
+}
 
 export class GoTestExplorer {
 
@@ -70,10 +89,76 @@ export class GoTestExplorer {
         this.enqueueTest(testConfig);
     }
 
+    /**
+     * Runs every test of the workspace.
+     *
+     * The files are grouped by the module they belong to, and one run tests
+     * all the packages of a module at once: the packages are compiled once,
+     * and the tool decides how to spread them over the available cores.
+     */
     private onRunAllTests() {
-        this.goTestProvider.discoveredTests.
-            filter(s => s.isTestSuite).
-            forEach(t => this.runTestSuite(t));
+        const suites = this.goTestProvider.discoveredTests.filter(s => s.isTestSuite);
+        const groups = new Map<string, ModuleGroup>();
+        const withoutModule: TestNode[] = [];
+
+        // The files of one directory belong to one package.
+        const byDirectory = new Map<string, TestNode[]>();
+        suites.forEach(suite => {
+            const dir = path.dirname(suite.uri.fsPath);
+            const files = byDirectory.get(dir) || [];
+            files.push(suite);
+            byDirectory.set(dir, files);
+        });
+
+        byDirectory.forEach((files, dir) => {
+            const module = findGoModule(dir);
+            if (!module) {
+                // A directory that is not in a module is run the way it was
+                // before: one run for each file.
+                withoutModule.push(...files);
+                return;
+            }
+            let group = groups.get(module.root);
+            if (!group) {
+                group = { module, packages: [], suites: [] };
+                groups.set(module.root, group);
+            }
+            group.packages.push({
+                importPath: importPathOf(module, dir),
+                path: path.relative(module.root, dir).split(path.sep).join('/'),
+                files: files.map(file => ({
+                    uri: file.uri,
+                    name: file.name,
+                    functions: file.children.map(child => child.name)
+                }))
+            });
+            group.suites.push(...files);
+        });
+
+        withoutModule.forEach(suite => this.runTestSuite(suite));
+        groups.forEach(group => this.runModule(group));
+    }
+
+    /**
+     * Runs every test of a module in one process.
+     */
+    private runModule(group: ModuleGroup) {
+        // Every test of the module is reported in one event, so the tree is
+        // redrawn once for the whole module.
+        const nodes: TestNode[] = [];
+        group.suites.forEach(suite => nodes.push(...suite.children, suite));
+        this.commands.sendTestRunStarted(nodes);
+
+        const testConfig: TestConfig = {
+            dir: group.module.root,
+            goConfig: vscode.workspace.getConfiguration('go', group.suites[0].uri),
+            flags: [],
+            functions: group.suites.reduce((all, suite) => all.concat(suite.children.map(child => child.name)), [] as string[]),
+            testUri: group.suites[0].uri,
+            testName: group.suites[0].name,
+            packages: group.packages
+        };
+        this.enqueueTest(testConfig);
     }
 
     private buildTestConfig(testNode: TestNode): TestConfig {
@@ -99,6 +184,10 @@ export class GoTestExplorer {
      * requested and report the suite-level result.
      */
     private onRunCompleted(testConfig: TestConfig, result: RawTestResult) {
+        if (testConfig.packages && testConfig.packages.length > 0) {
+            this.onModuleRunCompleted(testConfig, result);
+            return;
+        }
         let isTestSuitePassed = true;
         testConfig.functions.forEach(t => {
             let isTestPassed = true;
@@ -112,7 +201,52 @@ export class GoTestExplorer {
         });
 
         this.commands.sendTestResult(new TestResult(testConfig.testUri, testConfig.testName, isTestSuitePassed, result.output, result.err));
-        this.commands.sendTestCompleted(testConfig.testUri);
+        this.commands.sendTestCompleted([testConfig.testUri]);
+    }
+
+    /**
+     * A run that tested several packages has finished.
+     *
+     * The outcome of a test is read from the package it belongs to, so that a
+     * failure in one package does not mark the tests of another one as failed.
+     */
+    private onModuleRunCompleted(testConfig: TestConfig, result: RawTestResult) {
+        const uris: vscode.Uri[] = [];
+
+        testConfig.packages!.forEach(pkg => {
+            const packageResult = result.packages.get(pkg.importPath);
+            const failed = packageResult ? packageResult.failed : !result.isPassed;
+            const failedTests = packageResult ? packageResult.failedTests : result.failedTests;
+            const output = packageResult ? this.outputOfPackage(packageResult, result) : result.output;
+
+            pkg.files.forEach(file => {
+                uris.push(file.uri);
+                let isFilePassed = true;
+                file.functions.forEach(t => {
+                    let isTestPassed = true;
+                    // A test fails when it or one of its subtests failed, so a
+                    // failure in `TestAlpha/sub` marks `TestAlpha` as failed.
+                    if (failed && (failedTests.length === 0 || hasFailed(failedTests, t))) {
+                        isTestPassed = false;
+                        isFilePassed = false;
+                    }
+                    this.commands.sendTestResult(new TestResult(file.uri, t, isTestPassed, output, result.err));
+                });
+                this.commands.sendTestResult(new TestResult(file.uri, file.name, isFilePassed, output, result.err));
+            });
+        });
+
+        this.commands.sendTestCompleted(uris);
+    }
+
+    /**
+     * The output of a package.
+     *
+     * A package that did not build has no output of its own, so the output of
+     * the run is used, which holds the build error.
+     */
+    private outputOfPackage(packageResult: PackageResult, result: RawTestResult): string[] {
+        return packageResult.buildFailed ? result.output : packageResult.output.slice();
     }
 
     /**
@@ -121,11 +255,25 @@ export class GoTestExplorer {
      */
     private onRunFailed(testConfig: TestConfig, error: Error) {
         const output = [error.message];
+        if (testConfig.packages && testConfig.packages.length > 0) {
+            const uris: vscode.Uri[] = [];
+            testConfig.packages!.forEach(pkg => {
+                pkg.files.forEach(file => {
+                    uris.push(file.uri);
+                    file.functions.forEach(t => {
+                        this.commands.sendTestResult(new TestResult(file.uri, t, false, output, error));
+                    });
+                    this.commands.sendTestResult(new TestResult(file.uri, file.name, false, output, error));
+                });
+            });
+            this.commands.sendTestCompleted(uris);
+            return;
+        }
         testConfig.functions.forEach(t => {
             this.commands.sendTestResult(new TestResult(testConfig.testUri, t, false, output, error));
         });
         this.commands.sendTestResult(new TestResult(testConfig.testUri, testConfig.testName, false, output, error));
-        this.commands.sendTestCompleted(testConfig.testUri);
+        this.commands.sendTestCompleted([testConfig.testUri]);
     }
 
     /**

@@ -62,12 +62,44 @@ interface PendingOutcome {
 	output: string[];
 }
 
+/**
+ * What is known about a package while the run is still in progress.
+ */
+interface PackageBuilder {
+	package: string;
+	tests: Map<string, PendingOutcome>;
+	output: string[];
+	failed: boolean;
+	buildFailed: boolean;
+}
+
+/** The outcome of one package. */
+export interface PackageResult {
+	/** The import path of the package, which is how the tool reports it. */
+	readonly package: string;
+	/** The outcome of every test of the package that reported one, keyed by test name. */
+	readonly tests: ReadonlyMap<string, TestOutcome>;
+	/** The names of the tests of the package that failed. */
+	readonly failedTests: readonly string[];
+	/** The output the package produced. */
+	readonly output: readonly string[];
+	/** Whether the package failed. */
+	readonly failed: boolean;
+	/** Whether the package failed to build. */
+	readonly buildFailed: boolean;
+}
+
 /** What a run produced. */
 export interface GoTestResults {
-	/** The outcome of every test that reported one, keyed by test name. */
-	readonly tests: ReadonlyMap<string, TestOutcome>;
-	/** The names of the tests that failed. */
-	readonly failedTests: readonly string[];
+	/**
+	 * The result of every package of the run, keyed by its import path.
+	 *
+	 * A run that tests one package has one entry. A run that tests several
+	 * packages has one entry for each of them, so that the outcome of a test
+	 * is attributed to the package it belongs to: two packages may hold a
+	 * test with the same name.
+	 */
+	readonly packages: ReadonlyMap<string, PackageResult>;
 	/** The output of the run, in the order it was produced. */
 	readonly output: readonly string[];
 	/** The build errors of the run, whose paths are relative to the working directory. */
@@ -98,17 +130,14 @@ export class GoTestJsonParser {
 	/** The part of a line that has not been read yet. */
 	private buffer = '';
 
-	/** The outcome of every test seen so far. */
-	private readonly outcomes = new Map<string, PendingOutcome>();
+	/** What is known about every package seen so far. */
+	private readonly packages = new Map<string, PackageBuilder>();
 
 	/** The ordinary output of the run. */
 	private readonly outputLines: string[] = [];
 
 	/** The build errors of the run. */
 	private readonly buildOutputLines: string[] = [];
-
-	/** The packages that failed. */
-	private readonly failedPackages = new Set<string>();
 
 	/** Whether a package failed to build. */
 	private buildFailed = false;
@@ -153,22 +182,39 @@ export class GoTestJsonParser {
 
 	/** What the run produced so far. */
 	get results(): GoTestResults {
-		const tests = new Map<string, TestOutcome>();
-		const failedTests: string[] = [];
+		const packages = new Map<string, PackageResult>();
+		const failedPackages: string[] = [];
 
-		this.outcomes.forEach((outcome, name) => {
-			tests.set(name, outcome);
-			if (outcome.action === 'fail') {
-				failedTests.push(name);
+		this.packages.forEach((builder, name) => {
+			const tests = new Map<string, TestOutcome>();
+			const failedTests: string[] = [];
+
+			builder.tests.forEach((outcome, testName) => {
+				tests.set(testName, outcome);
+				if (outcome.action === 'fail') {
+					failedTests.push(testName);
+				}
+			});
+
+			if (builder.failed) {
+				failedPackages.push(name);
 			}
+
+			packages.set(name, {
+				package: name,
+				tests,
+				failedTests,
+				output: builder.output.slice(),
+				failed: builder.failed,
+				buildFailed: builder.buildFailed
+			});
 		});
 
 		return {
-			tests,
-			failedTests,
+			packages,
 			output: this.outputLines.slice(),
 			buildOutput: this.buildOutputLines.slice(),
-			failedPackages: Array.from(this.failedPackages),
+			failedPackages,
 			buildFailed: this.buildFailed
 		};
 	}
@@ -193,8 +239,11 @@ export class GoTestJsonParser {
 				const lines = splitLines(event.Output);
 				this.outputLines.push(...lines);
 				output.push(...lines);
-				if (event.Test) {
-					this.outcomeFor(event.Test).output.push(...lines);
+				if (event.Package) {
+					this.packageFor(event.Package).output.push(...lines);
+				}
+				if (event.Test && event.Package) {
+					this.outcomeFor(event.Package, event.Test).output.push(...lines);
 				}
 				return;
 			}
@@ -206,23 +255,33 @@ export class GoTestJsonParser {
 			}
 			case 'build-fail': {
 				this.buildFailed = true;
+				// The import path of a build failure names the package that did
+				// not build, followed by the name of its test binary.
+				const buildFailed = packageOfBuildFailure(event.ImportPath);
+				if (buildFailed) {
+					this.packageFor(buildFailed).buildFailed = true;
+				}
 				return;
 			}
 			case 'run': {
-				if (event.Test) {
-					this.outcomeFor(event.Test);
+				if (event.Test && event.Package) {
+					this.outcomeFor(event.Package, event.Test);
 				}
 				return;
 			}
 			case 'pass':
 			case 'fail':
 			case 'skip': {
-				if (event.Test) {
-					const outcome = this.outcomeFor(event.Test);
+				if (event.Test && event.Package) {
+					const outcome = this.outcomeFor(event.Package, event.Test);
 					outcome.action = event.Action;
 					outcome.elapsed = event.Elapsed ?? outcome.elapsed;
 				} else if (event.Action === 'fail' && event.Package) {
-					this.failedPackages.add(event.Package);
+					const pkg = this.packageFor(event.Package);
+					pkg.failed = true;
+					if (event.FailedBuild) {
+						pkg.buildFailed = true;
+					}
 				}
 				return;
 			}
@@ -232,16 +291,47 @@ export class GoTestJsonParser {
 	}
 
 	/**
+	 * What is known about a package, created the first time the package is
+	 * seen.
+	 */
+	private packageFor(name: string): PackageBuilder {
+		let pkg = this.packages.get(name);
+		if (!pkg) {
+			pkg = { package: name, tests: new Map(), output: [], failed: false, buildFailed: false };
+			this.packages.set(name, pkg);
+		}
+		return pkg;
+	}
+
+	/**
 	 * The outcome of a test, created the first time the test is seen.
 	 */
-	private outcomeFor(name: string): PendingOutcome {
-		let outcome = this.outcomes.get(name);
+	private outcomeFor(packageName: string, name: string): PendingOutcome {
+		const pkg = this.packageFor(packageName);
+		let outcome = pkg.tests.get(name);
 		if (!outcome) {
 			outcome = { name, action: 'run', elapsed: 0, output: [] };
-			this.outcomes.set(name, outcome);
+			pkg.tests.set(name, outcome);
 		}
 		return outcome;
 	}
+}
+
+/**
+ * The package that a build failure belongs to.
+ *
+ * The tool names the package that did not build, followed by the name of its
+ * test binary: `example.com/mod/pkg [example.com/mod/pkg.test]`.
+ *
+ * @param importPath the import path the tool reported.
+ * @returns the import path of the package, or undefined when there is none.
+ */
+function packageOfBuildFailure(importPath: string | undefined): string | undefined {
+	if (!importPath) {
+		return undefined;
+	}
+	const separator = importPath.indexOf(' ');
+	return separator > 0 ? importPath.substring(0, separator) : importPath;
 }
 
 /**

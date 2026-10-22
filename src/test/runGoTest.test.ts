@@ -80,6 +80,25 @@ async function runFixture(functions: string[], body: string = FAILING, token?: C
 	}, token);
 }
 
+/**
+ * Runs several packages of the fixture in one process.
+ */
+async function runPackages(packages: { importPath: string; path: string }[]) {
+	return runGoTest({
+		dir: fixture,
+		goConfig: new WorkspaceConfiguration({ testTimeout: '60s', testFlags: [] }),
+		flags: [],
+		functions: [],
+		testUri: Uri.file(path.join(fixture, 'a_test.go')),
+		testName: 'a_test.go',
+		packages: packages.map(pkg => ({
+			importPath: pkg.importPath,
+			path: pkg.path,
+			files: [] as { uri: Uri; name: string; functions: string[] }[]
+		}))
+	});
+}
+
 describe.skipIf(!hasGo)('runGoTest', () => {
 	it('reports a test that failed', async () => {
 		const result = await runFixture(['TestFailing']);
@@ -151,6 +170,73 @@ func TestOther(t *testing.T) {}
 
 		expect(result.isPassed).toBe(true);
 		expect(result.output.join('\n')).not.toContain('=== RUN   TestPassingExtra');
+	});
+});
+
+describe.skipIf(!hasGo)('a run that tests several packages', () => {
+	it('reports the outcome of every package', async () => {
+		const dirA = path.join(fixture, 'a');
+		const dirB = path.join(fixture, 'b');
+		fs.mkdirSync(dirA, { recursive: true });
+		fs.mkdirSync(dirB, { recursive: true });
+		fs.writeFileSync(path.join(dirA, 'a_test.go'), PASSING);
+		fs.writeFileSync(path.join(dirB, 'b_test.go'), FAILING);
+
+		const result = await runPackages([
+			{ importPath: 'gotestexplorerfixture/a', path: 'a' },
+			{ importPath: 'gotestexplorerfixture/b', path: 'b' }
+		]);
+
+		expect(result.packages.size).toBe(2);
+		expect(result.packages.get('gotestexplorerfixture/a')?.failed).toBe(false);
+		expect(result.packages.get('gotestexplorerfixture/a')?.failedTests).toEqual([]);
+		expect(result.packages.get('gotestexplorerfixture/b')?.failed).toBe(true);
+		expect(result.packages.get('gotestexplorerfixture/b')?.failedTests).toContain('TestFailing');
+	});
+
+	it('keeps the output of every package apart', async () => {
+		const dirA = path.join(fixture, 'a');
+		const dirB = path.join(fixture, 'b');
+		fs.mkdirSync(dirA, { recursive: true });
+		fs.mkdirSync(dirB, { recursive: true });
+		fs.writeFileSync(path.join(dirA, 'a_test.go'), PASSING);
+		fs.writeFileSync(path.join(dirB, 'b_test.go'), FAILING);
+
+		const result = await runPackages([
+			{ importPath: 'gotestexplorerfixture/a', path: 'a' },
+			{ importPath: 'gotestexplorerfixture/b', path: 'b' }
+		]);
+
+		expect(result.packages.get('gotestexplorerfixture/a')?.output.join('\n')).toContain('TestPassing');
+		expect(result.packages.get('gotestexplorerfixture/a')?.output.join('\n')).not.toContain('boom');
+		expect(result.packages.get('gotestexplorerfixture/b')?.output.join('\n')).toContain('boom');
+	});
+
+	it('runs the package at the root of the module', async () => {
+		fs.writeFileSync(path.join(fixture, 'a_test.go'), PASSING);
+
+		const result = await runPackages([{ importPath: 'gotestexplorerfixture', path: '' }]);
+
+		expect(result.packages.get('gotestexplorerfixture')?.failed).toBe(false);
+		expect(result.packages.get('gotestexplorerfixture')?.tests.get('TestPassing')?.action).toBe('pass');
+	});
+
+	it('runs the tests of every package, not only the first', async () => {
+		const dirA = path.join(fixture, 'a');
+		const dirB = path.join(fixture, 'b');
+		fs.mkdirSync(dirA, { recursive: true });
+		fs.mkdirSync(dirB, { recursive: true });
+		fs.writeFileSync(path.join(dirA, 'a_test.go'), PASSING);
+		fs.writeFileSync(path.join(dirB, 'b_test.go'), PASSING);
+
+		const result = await runPackages([
+			{ importPath: 'gotestexplorerfixture/a', path: 'a' },
+			{ importPath: 'gotestexplorerfixture/b', path: 'b' }
+		]);
+
+		expect(result.isPassed).toBe(true);
+		expect(result.output.join('\n')).toContain('TestPassing');
+		expect(result.packages.get('gotestexplorerfixture/b')?.tests.get('TestPassing')?.action).toBe('pass');
 	});
 });
 

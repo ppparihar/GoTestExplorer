@@ -71,6 +71,42 @@ const outputChannel = vscode.window.createOutputChannel('Go Test Explorer');
 /**
  * Input to goTest.
  */
+/**
+ * A file that holds tests.
+ */
+export interface TestFile {
+	/**
+	 * The file the tests are declared in.
+	 */
+	uri: vscode.Uri;
+	/**
+	 * The name of the file, which is also the name of its node in the tree.
+	 */
+	name: string;
+	/**
+	 * The names of the tests the file holds.
+	 */
+	functions: string[];
+}
+
+/**
+ * A package that a run tests.
+ */
+export interface TestPackage {
+	/**
+	 * The import path of the package, which is how the tool reports it.
+	 */
+	importPath: string;
+	/**
+	 * The path of the package, relative to the directory the run starts in.
+	 */
+	path: string;
+	/**
+	 * The files of the package that hold tests.
+	 */
+	files: TestFile[];
+}
+
 export interface TestConfig {
 	/**
 	 * The working directory for `go test`.
@@ -104,6 +140,17 @@ export interface TestConfig {
 	testUri: vscode.Uri;
 
 	testName: string;
+
+	/**
+	 * The packages the run tests, when it tests more than one.
+	 *
+	 * A run that tests several packages uses one process for all of them, so
+	 * that the packages are compiled once. There is no filter on the names of
+	 * the tests in that case: a filter would apply to every package of the
+	 * run, and would keep a test that was not asked for from running in a
+	 * package where it was asked for.
+	 */
+	packages?: TestPackage[];
 }
 
 export function getBinPath(tool: string): string {
@@ -251,7 +298,9 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 				// The build error comes before everything else the run
 				// produced, so it leads the output.
 				const output = results.buildOutput.concat(results.output);
-				resolve(new RawTestResult(code === 0, output, results.failedTests.slice()));
+				const failedTests: string[] = [];
+				results.packages.forEach(pkg => failedTests.push(...pkg.failedTests));
+				resolve(new RawTestResult(code === 0, output, failedTests, undefined, results.packages));
 			});
 
 			runningTestProcesses.push(tp);
@@ -285,9 +334,16 @@ function expandFilePathInOutput(line: string, cwd: string): string {
 /**
  * Get the test target arguments.
  *
+ * A run that tests several packages names them, so that one process tests
+ * them all. A run that tests one package names the tests to run, so that the
+ * other tests of the package are left alone.
+ *
  * @param testconfig Configuration for the Go extension.
  */
 function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
+	if (testconfig.packages && testconfig.packages.length > 0) {
+		return Promise.resolve(testconfig.packages.map(pkg => pkg.path === '' ? '.' : './' + pkg.path));
+	}
 	return Promise.resolve(buildTargetArgs({
 		functions: testconfig.functions,
 		isBenchmark: testconfig.isBenchmark

@@ -176,12 +176,12 @@ describe('GoTestProvider refreshes', () => {
 		commands.sendTestResult(new TestResult(fileUri, 'alpha_test.go', true, []));
 		expect(refreshes).toBe(1);
 
-		commands.sendTestCompleted(fileUri);
+		commands.sendTestCompleted([fileUri]);
 		expect(refreshes).toBe(2);
 	});
 
 	it('redraws the node that holds the tests', () => {
-		commands.sendTestCompleted(fileUri);
+		commands.sendTestCompleted([fileUri]);
 
 		expect(refreshed[0].name).toBe('alpha_test.go');
 	});
@@ -196,10 +196,54 @@ describe('GoTestProvider refreshes', () => {
 
 	it('shows the outcome of a run when it finishes', () => {
 		commands.sendTestResult(new TestResult(fileUri, 'TestAlpha', false, ['boom']));
-		commands.sendTestCompleted(fileUri);
+		commands.sendTestCompleted([fileUri]);
 
 		const suite = provider.discoveredTests[0];
 		expect(suite.children[0].testResult.isPassed).toBe(false);
 		expect(suite.icon).toBe('testSuiteFailed.svg');
+	});
+});
+
+describe('GoTestProvider redraws a run that covers several files', () => {
+	let commands: Commands;
+	let provider: GoTestProvider;
+	let refreshes: number;
+	let refreshed: (TestNode | undefined)[];
+
+	const otherUri = Uri.file('/repo/beta_test.go');
+
+	beforeEach(() => {
+		commands = new Commands();
+		provider = new GoTestProvider(fakeContext(), commands);
+		const alpha = buildSuite();
+		const beta = new TestNode('beta_test.go', otherUri, [new TestNode('TestBeta', otherUri)]);
+		commands.sendDiscoveredTests([alpha, beta]);
+		refreshes = 0;
+		refreshed = [];
+		provider.onDidChangeTreeData(node => {
+			refreshes++;
+			refreshed.push(node);
+		});
+	});
+
+	it('redraws the whole tree once, not once per file', () => {
+		const alpha = provider.discoveredTests[0];
+		const beta = provider.discoveredTests[1];
+
+		commands.sendTestRunStarted([alpha.children[0], alpha, beta.children[0], beta]);
+
+		expect(refreshes).toBe(1);
+		// The run spans two suites, so there is no single node to redraw.
+		expect(refreshed[0]).toBeUndefined();
+	});
+
+	it('redraws the whole tree once when the run finishes', () => {
+		commands.sendTestResult(new TestResult(fileUri, 'TestAlpha', true, []));
+		commands.sendTestResult(new TestResult(otherUri, 'TestBeta', true, []));
+
+		commands.sendTestCompleted([fileUri, otherUri]);
+
+		expect(refreshes).toBe(1);
+		expect(refreshed[0]).toBeUndefined();
 	});
 });

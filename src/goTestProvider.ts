@@ -184,20 +184,32 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 	}
 
 	/**
-	 * The run of a file has finished, so the tree is redrawn once with the
-	 * outcome of every test of that run.
+	 * The run that covers the given files has finished, so the tree is
+	 * redrawn once with the outcome of every test of that run.
+	 *
+	 * A run that covered several files has no single node to redraw, so the
+	 * whole tree is redrawn.
 	 */
-	private onTestRunCompleted(testUri: vscode.Uri) {
-		const suite = this.__discoveredTestsMap.get(this.getNodeKey(testUri.fsPath, path.basename(testUri.fsPath)));
-		this.refresh(suite);
+	private onTestRunCompleted(testUris: vscode.Uri[]) {
+		if (testUris.length === 1) {
+			const testUri = testUris[0];
+			const suite = this.__discoveredTestsMap.get(this.getNodeKey(testUri.fsPath, path.basename(testUri.fsPath)));
+			this.refresh(suite);
+			return;
+		}
+		this.refresh();
 	}
 
 	/**
 	 * The node that holds the others, so the tree is redrawn once for the
 	 * whole group.
+	 *
+	 * A group that spans several suites has no single node to redraw, so the
+	 * whole tree is redrawn.
 	 */
 	private topNodeOf(testNodes: TestNode[]): TestNode | undefined {
-		return testNodes.find(node => !testNodes.some(other => other !== node && other.isTestSuite && other.children.includes(node)));
+		const tops = testNodes.filter(node => !testNodes.some(other => other !== node && other.isTestSuite && other.children.includes(node)));
+		return tops.length === 1 ? tops[0] : undefined;
 	}
 
 	private setLoading(testNode: TestNode) {
