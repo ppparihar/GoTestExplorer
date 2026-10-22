@@ -766,6 +766,7 @@ export const window = {
     _options: unknown,
   ): {
     message?: string;
+    description?: string;
     reveal(node: unknown, options?: unknown): Promise<void>;
     dispose(): void;
   } {

@@ -17,7 +17,6 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private _discoveredTests: TestNode[] = [];
   private _discovering: boolean;
   private _filter = '';
-  private _coverageNode: TestNode | undefined;
   private _fileCoverage: (suite: TestNode) => string | undefined = () => undefined;
   private _statuses: ReadonlySet<TestStatus> = new Set();
   /**
@@ -91,15 +90,6 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   }
 
   /**
-   * What the tests covered, shown as a row above the list of tests. Undefined
-   * removes the row.
-   */
-  set coverageSummary(text: string | undefined) {
-    this._coverageNode = text === undefined ? undefined : new TestNode(text, null);
-    this.refresh();
-  }
-
-  /**
    * Tells what the tests covered for a test file, as the text shown beside it,
    * or undefined when there is nothing to show. It is asked each time the row
    * is drawn, so the row follows the results of the file.
@@ -110,17 +100,6 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   }
 
   getTreeItem(testNode: TestNode): vscode.TreeItem {
-    if (testNode === this._coverageNode) {
-      const item = new vscode.TreeItem(testNode.name, vscode.TreeItemCollapsibleState.None);
-      item.contextValue = 'coverage';
-      item.iconPath = new vscode.ThemeIcon('shield');
-      item.tooltip = 'Code coverage of the last test runs. Click for the files.';
-      item.command = {
-        command: 'goTestExplorer.showCoverageReport',
-        title: 'Show Code Coverage by File',
-      };
-      return item;
-    }
     const treeItem = new vscode.TreeItem(
       testNode.name,
       testNode.isTestSuite
@@ -160,8 +139,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     if (this._discovering) {
       return Promise.resolve([new TestNode('Loading...', null)]);
     }
-    const coverage = this._coverageNode ? [this._coverageNode] : [];
-    return Promise.resolve([...coverage, ...this.visibleTests]);
+    return Promise.resolve(this.visibleTests);
   }
 
   /**

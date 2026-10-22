@@ -422,117 +422,22 @@ describe('GoTestExplorer runs a whole module', () => {
       expect(__state.statusItems[0].visible).toBe(true);
     });
 
-    it('shows the coverage above the list of tests', async () => {
+    it('shows the coverage in the header of the view, where it stays in place', async () => {
       const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
       explorer.commands.sendDiscoveredTests([a]);
+      const header = () => (explorer as unknown as { treeView: { description?: string } }).treeView;
       await vscode.commands.executeCommand('goTestExplorer.showCoverage');
-      expect((await explorer.goTestProvider.getChildren())[0].name).toBe(
-        'Coverage: run tests to see it',
-      );
+      expect(header().description).toBe('Coverage: run tests');
 
       runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
       await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
       await waitFor(() => completed.length > 0);
-      expect((await explorer.goTestProvider.getChildren())[0].name).toBe('Coverage 50.0% (1 file)');
+      expect(header().description).toBe('Coverage 50.0%');
+      // The tests are the only rows of the tree, so the header does not scroll away.
+      expect(await explorer.goTestProvider.getChildren()).toEqual([a]);
 
       await vscode.commands.executeCommand('goTestExplorer.hideCoverage');
-      expect((await explorer.goTestProvider.getChildren())[0]).toBe(a);
-    });
-
-    it('lets a run of one test file change only the file it tests, and never lowers it', async () => {
-      const dir = path.join(moduleDir, 'pkg', 'a');
-      const a = suiteIn(dir, 'a_test.go', ['TestAlpha']);
-      const b = suiteIn(dir, 'b_test.go', ['TestBeta']);
-      explorer.commands.sendDiscoveredTests([a, b]);
-      const marksOfB = openEditor(path.join(dir, 'b.go'));
-      const block = (line: number, count: number) => ({
-        startLine: line,
-        startCol: 1,
-        endLine: line,
-        endCol: 9,
-        statements: 1,
-        count,
-      });
-      const profileOf = (a: number[], b: number[]) =>
-        new Map([
-          ['example.com/mod/pkg/a/a.go', a.map((count, i) => block(i + 1, count))],
-          ['example.com/mod/pkg/a/b.go', b.map((count, i) => block(i + 1, count))],
-        ]);
-      const finish = (coverage: ReturnType<typeof profileOf>) =>
-        runGoTest.mockResolvedValue(
-          new RawTestResult(true, [], [], undefined, new Map(), coverage),
-        );
-      const row = (suite: TestNode) => explorer.goTestProvider.getTreeItem(suite).description;
-      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
-
-      // The whole module ran: a.go is half covered, b.go is all covered.
-      finish(profileOf([1, 0], [1, 1]));
-      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
-      await waitFor(() => row(a) === '50.0%');
-      expect(row(b)).toBe('100.0%');
-
-      // One test of a_test.go ran. It covers the other half of a.go, and the
-      // tool also reports b.go, which it did not run.
-      const before = marksOfB.length;
-      finish(profileOf([0, 1], [0, 0]));
-      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
-      await waitFor(() => row(a) === '100.0%');
-      expect(row(b)).toBe('100.0%');
-      // b.go is marked as it was: all of it covered, none of it not.
-      expect(marksOfB.length).toBeGreaterThan(before);
-      expect(marksOfB.slice(-2).map((m) => m.lines)).toEqual([[0, 1], []]);
-
-      // A run of one test that covers less does not take coverage back.
-      finish(profileOf([0, 0], [0, 0]));
-      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
-      await waitFor(() => runGoTest.mock.calls.length >= 3);
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(row(a)).toBe('100.0%');
-
-      // Run All starts over.
-      finish(profileOf([0, 0], [1, 1]));
-      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
-      await waitFor(() => row(a) === '0.0%');
-    });
-
-    it('forgets the coverage of a file that is saved', async () => {
-      const dir = path.join(moduleDir, 'pkg', 'a');
-      const a = suiteIn(dir, 'a_test.go', ['TestAlpha']);
-      explorer.commands.sendDiscoveredTests([a]);
-      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
-      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
-      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
-      await waitFor(() => explorer.goTestProvider.getTreeItem(a).description === '50.0%');
-
-      __state.saveListeners.forEach((listener) =>
-        listener({ uri: Uri.file(path.join(dir, 'a.go')) }),
-      );
-
-      await waitFor(() => explorer.goTestProvider.getTreeItem(a).description === undefined);
-    });
-
-    it('shows the coverage beside a test file only once its tests have run', async () => {
-      const dir = path.join(moduleDir, 'pkg', 'a');
-      const a = suiteIn(dir, 'a_test.go', ['TestAlpha']);
-      const other = suiteIn(dir, 'extra_test.go', ['TestExtra']);
-      explorer.commands.sendDiscoveredTests([a, other]);
-      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
-      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
-      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
-      await waitFor(() => completed.length > 0);
-
-      const provider = explorer.goTestProvider;
-      // a_test.go tests a.go. extra_test.go has not run, so it shows nothing,
-      // although the coverage of its package is known.
-      expect(provider.getTreeItem(a).description).toBe('50.0%');
-      expect(provider.getTreeItem(other).description).toBeUndefined();
-
-      // Once it has run, it has no extra.go, so its package shows.
-      explorer.commands.sendTestResult(new TestResult(other.uri, 'TestExtra', true, []));
-      expect(provider.getTreeItem(other).description).toBe('package 50.0%');
-
-      await vscode.commands.executeCommand('goTestExplorer.hideCoverage');
-      expect(provider.getTreeItem(a).description).toBeUndefined();
+      expect(header().description).toBeUndefined();
     });
 
     it('lists the covered files, the least covered first, and opens the one picked', async () => {

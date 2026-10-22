@@ -182,19 +182,20 @@ export class GoTestExplorer {
   }
 
   /**
-   * Puts what the tests covered above the list of tests.
+   * Shows what the tests covered in the header of the view, which stays in
+   * place while the list of tests is scrolled.
    */
   private showCoverageSummary() {
-    if (!this.coverageEnabled) {
-      this.goTestProvider.coverageSummary = undefined;
-      return;
-    }
     const percent = this.coverage.percent;
-    const files = this.coverage.report().length;
-    this.goTestProvider.coverageSummary =
-      percent === undefined
-        ? 'Coverage: run tests to see it'
-        : `Coverage ${percent.toFixed(1)}% (${files} ${files === 1 ? 'file' : 'files'})`;
+    if (!this.coverageEnabled) {
+      this.treeView.description = undefined;
+    } else if (percent === undefined) {
+      this.treeView.description = 'Coverage: run tests';
+    } else {
+      this.treeView.description = `Coverage ${percent.toFixed(1)}%`;
+    }
+    // The rows of the files show their own coverage, so they are drawn again.
+    this.goTestProvider.fileCoverage = (suite) => this.coverageOfTestFile(suite);
   }
 
   /**

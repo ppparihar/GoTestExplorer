@@ -52,21 +52,6 @@ describe('GoTestProvider', () => {
     expect((await provider.getChildren(suite)).length).toBe(2);
   });
 
-  it('shows the coverage as a row above the tests, and removes it again', async () => {
-    const suite = buildSuite();
-    commands.sendDiscoveredTests([suite]);
-
-    provider.coverageSummary = 'Coverage 50.0% (1 file)';
-    const [row, file] = await provider.getChildren();
-    expect(file).toBe(suite);
-    const item = provider.getTreeItem(row);
-    expect(item.label).toBe('Coverage 50.0% (1 file)');
-    expect((item.command as { command: string }).command).toBe('goTestExplorer.showCoverageReport');
-
-    provider.coverageSummary = undefined;
-    expect(await provider.getChildren()).toEqual([suite]);
-  });
-
   it('applies a test result to the matching node', () => {
     commands.sendDiscoveredTests([buildSuite()]);
 
