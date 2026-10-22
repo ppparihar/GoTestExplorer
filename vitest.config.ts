@@ -5,6 +5,9 @@ export default defineConfig({
 	test: {
 		include: ['src/test/**/*.test.ts'],
 		environment: 'node',
+		// The tests that run the real go tool compile a package, which takes
+		// well over the default 5 s when the build cache is cold.
+		testTimeout: 60000,
 		// The vscode module only exists inside an extension host, so unit tests
 		// resolve it to a local mock instead.
 		alias: {

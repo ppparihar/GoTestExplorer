@@ -328,18 +328,31 @@ describe.skipIf(!hasGo)('cancelling a run', () => {
     const source = new CancellationTokenSource();
     const run = runFixture(['TestSlow'], SLOW, source.token);
 
-    // The tool compiles the package and runs its binary.
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    expect(testBinaryRunning()).toBe(true);
+    // The tool compiles the package and runs its binary. A cold build cache
+    // makes the compile slow, so wait for the binary instead of guessing.
+    expect(await waitFor(testBinaryRunning, 20000)).toBe(true);
 
     source.cancel();
     await run;
 
     // The binary is killed with the tool, so it does not keep running.
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    expect(testBinaryRunning()).toBe(false);
+    expect(await waitFor(() => !testBinaryRunning(), 5000)).toBe(true);
   });
 });
+
+/**
+ * Polls until the condition holds, and reports whether it did in time.
+ */
+async function waitFor(condition: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (condition()) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return condition();
+}
 
 /**
  * Reports whether the binary the tool compiled is still running.
