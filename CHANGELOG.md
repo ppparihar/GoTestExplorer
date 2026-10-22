@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- Code coverage from the test view. A shield button in the title of the view turns coverage on: every run from the view then measures what the tests cover, and when the run ends the lines are marked in the open editors, green for lines the tests ran and red for lines they did not, with the share of the statements that ran in the status bar. The button turns into one that hides the marks. The marks are drawn as a line background and a mark in the overview ruler, so they do not compete with breakpoints in the gutter. (#31)
 - A filter button (funnel icon) in the title of the test view. It opens one box for the whole filter: type words of a test or file name, and tick Failed, Passed or Not run. The tree follows the box as you type and tick (Enter keeps the filter, Escape puts back the previous one). "Run All" and the run button of a file then run only the tests that are shown, for example only the failed ones. The button turns into "Clear Filter" while a filter is on. The view also has one button that collapses all the test files, and turns into one that expands them again. (#26, #15)
 
 ## V0.2.1

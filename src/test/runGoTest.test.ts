@@ -473,3 +473,51 @@ function testBinaryRunning(): boolean {
     return false;
   }
 }
+
+describe.skipIf(!hasGo)('runGoTest measures coverage', () => {
+  const COVERED = `package covpkg
+
+func Covered() int { return 1 }
+
+func Uncovered() int {
+	return 2
+}
+`;
+  const COVERED_TEST = `package covpkg
+
+import "testing"
+
+func TestCovered(t *testing.T) { Covered() }
+`;
+
+  async function run(coverage: boolean) {
+    const dir = path.join(fixture, 'covpkg');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'cov.go'), COVERED);
+    const file = path.join(dir, 'cov_test.go');
+    fs.writeFileSync(file, COVERED_TEST);
+    return runGoTest({
+      dir,
+      settings: { buildTags: '', testFlags: [], timeout: '60s', envFile: '', env: {} },
+      flags: [],
+      functions: ['TestCovered'],
+      testUri: Uri.file(file),
+      testName: 'cov_test.go',
+      coverage,
+    });
+  }
+
+  it('returns what the tests ran and what they did not', async () => {
+    const result = await run(true);
+
+    expect(result.isPassed).toBe(true);
+    const blocks = result.coverage!.get('gotestexplorerfixture/covpkg/cov.go')!;
+    expect(blocks.some((b) => b.count > 0)).toBe(true);
+    expect(blocks.some((b) => b.count === 0)).toBe(true);
+  });
+
+  it('measures nothing unless it is asked to', async () => {
+    const result = await run(false);
+    expect(result.coverage).toBeUndefined();
+  });
+});

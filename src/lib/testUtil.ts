@@ -2,6 +2,7 @@ import * as cp from 'child_process';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import {
   getBinPathWithPreferredGopath,
   getBinPathFromEnvVar,
@@ -14,6 +15,7 @@ import { packageArgument } from '../runner/chunkPackages';
 import { testOutput } from './testOutput';
 import { RunSettings, goBinary, goPath } from './settings';
 import { RawTestResult } from '../rawTestResult';
+import { CoverProfile, parseCoverProfile } from './coverageProfile';
 import { FinishedTest, GoTestJsonParser } from '../exec/goTestJsonParser';
 //const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const sendSignal = 'SIGKILL';
@@ -146,6 +148,11 @@ export interface TestConfig {
   testName: string;
 
   /**
+   * Whether the run measures what the tests cover.
+   */
+  coverage?: boolean;
+
+  /**
    * The packages the run tests, when it tests more than one.
    *
    * A run that tests several packages uses one process for all of them, so
@@ -255,6 +262,16 @@ export function runGoTest(
       args.push('-benchmem', '-run=^$');
     } else {
       args.push('-timeout', testconfig.settings.timeout);
+    }
+    // The profile is written to a file of its own, so that runs that go on
+    // at the same time do not write over each other.
+    let coverFile: string | undefined;
+    if (testconfig.coverage && !testconfig.isBenchmark) {
+      coverFile = path.join(
+        os.tmpdir(),
+        `gotestexplorer-cover-${process.pid}-${Date.now()}-${coverCounter++}.out`,
+      );
+      args.push('-coverprofile', coverFile);
     }
     if (buildTags && testconfig.flags.indexOf('-tags') === -1) {
       args.push('-tags', buildTags);
@@ -383,13 +400,45 @@ export function runGoTest(
           const output = results.buildOutput.concat(results.output);
           const failedTests: string[] = [];
           results.packages.forEach((pkg) => failedTests.push(...pkg.failedTests));
-          resolve(new RawTestResult(code === 0, output, failedTests, undefined, results.packages));
+          resolve(
+            new RawTestResult(
+              code === 0,
+              output,
+              failedTests,
+              undefined,
+              results.packages,
+              coverFile ? readCoverProfile(coverFile) : undefined,
+            ),
+          );
         });
 
         runningTestProcesses.push(tp);
       })
       .catch((error) => failRun(error));
   });
+}
+
+/**
+ * Makes the names of the profile files of the runs differ.
+ */
+let coverCounter = 0;
+
+/**
+ * Reads the profile a run wrote, and removes the file. A run that was killed,
+ * or did not build, has no profile.
+ */
+function readCoverProfile(file: string): CoverProfile | undefined {
+  try {
+    return parseCoverProfile(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return undefined;
+  } finally {
+    try {
+      fs.unlinkSync(file);
+    } catch {
+      // There was no file to remove.
+    }
+  }
 }
 
 /**

@@ -50,6 +50,18 @@ export enum TreeItemCollapsibleState {
   Expanded = 2,
 }
 
+export enum OverviewRulerLane {
+  Left = 1,
+  Center = 2,
+  Right = 4,
+  Full = 7,
+}
+
+export enum StatusBarAlignment {
+  Left = 1,
+  Right = 2,
+}
+
 export enum TextEditorRevealType {
   Default = 0,
   InCenter = 1,
@@ -394,6 +406,8 @@ export class CancellationTokenSource {
  */
 export interface MockTextEditor {
   document: { uri: Uri };
+  /** The ranges set for each decoration type, keyed by the type. */
+  setDecorations?(type: unknown, ranges: Range[]): void;
   selection: Selection;
   revealRange(range: Range, type?: TextEditorRevealType): void;
 }
@@ -523,6 +537,10 @@ export class MockQuickPick {
 
 export const __state = {
   quickPicks: [] as MockQuickPick[],
+  /** The editors that are visible. */
+  visibleTextEditors: [] as MockTextEditor[],
+  /** The status bar items the code under test has created. */
+  statusItems: [] as Array<{ text: string; visible: boolean }>,
   revealed: [] as Array<{ node: unknown; options: unknown }>,
   workspaceFolders: undefined as WorkspaceFolder[] | undefined,
   rootPath: undefined as string | undefined,
@@ -628,6 +646,8 @@ export function __reset(): void {
   __state.documentTexts.clear();
   __state.fileWatchers = [];
   __state.quickPicks = [];
+  __state.visibleTextEditors = [];
+  __state.statusItems = [];
   __state.revealed = [];
   __configCalls.reset();
 }
@@ -742,6 +762,44 @@ export const window = {
       dispose(): void {},
     };
   },
+  get visibleTextEditors(): MockTextEditor[] {
+    return __state.visibleTextEditors;
+  },
+  onDidChangeVisibleTextEditors(): Disposable {
+    return new Disposable();
+  },
+  createTextEditorDecorationType(options: { backgroundColor?: string }): {
+    key: string;
+    dispose(): void;
+  } {
+    return { key: options.backgroundColor ?? '', dispose(): void {} };
+  },
+  createStatusBarItem(): {
+    text: string;
+    tooltip: string;
+    show(): void;
+    hide(): void;
+    dispose(): void;
+  } {
+    const record = { text: '', visible: false };
+    __state.statusItems.push(record);
+    return {
+      get text() {
+        return record.text;
+      },
+      set text(value: string) {
+        record.text = value;
+      },
+      tooltip: '',
+      show(): void {
+        record.visible = true;
+      },
+      hide(): void {
+        record.visible = false;
+      },
+      dispose(): void {},
+    };
+  },
   createQuickPick(): MockQuickPick {
     const box = new MockQuickPick();
     __state.quickPicks.push(box);
@@ -777,6 +835,8 @@ export default {
   SymbolKind,
   FileType,
   TreeItemCollapsibleState,
+  OverviewRulerLane,
+  StatusBarAlignment,
   TextEditorRevealType,
   FileChangeType,
   Position,

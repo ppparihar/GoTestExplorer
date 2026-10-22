@@ -3,6 +3,8 @@ import * as path from 'path';
 import { GoTestProvider } from './goTestProvider';
 import { runGoTest, TestConfig, TestPackage, cancelRunningTests } from './lib/testUtil';
 import { TestNode } from './testNode';
+import { CoverageDecorations } from './coverageDecorations';
+import { CoverBlock, CoverProfile } from './lib/coverageProfile';
 import { TestStatus } from './lib/testFilter';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
@@ -43,6 +45,11 @@ const STATUS_LABELS: Record<TestStatus, string> = {
 export class GoTestExplorer {
   goTestProvider: GoTestProvider;
   private readonly treeView: vscode.TreeView<TestNode>;
+  private readonly coverage: CoverageDecorations;
+  /**
+   * Whether the runs measure what the tests cover.
+   */
+  private coverageEnabled = false;
 
   readonly commands: Commands;
   private readonly testQueue: TestQueue;
@@ -73,6 +80,8 @@ export class GoTestExplorer {
       treeDataProvider: this.goTestProvider,
     });
     context.subscriptions.push(this.treeView);
+    this.coverage = new CoverageDecorations();
+    context.subscriptions.push(this.coverage);
 
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.runTest', this.onRunSingleTest.bind(this)),
@@ -85,6 +94,13 @@ export class GoTestExplorer {
         testDiscoverer.discoverAllTests();
       }),
     );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.showCoverage', () => this.setCoverage(true)),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.hideCoverage', () => this.setCoverage(false)),
+    );
+    this.setCoverage(false);
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.expandAll', this.onExpandAll.bind(this)),
     );
@@ -134,6 +150,45 @@ export class GoTestExplorer {
     );
     testDiscoverer.discoverAllTests();
   }
+  /**
+   * Turns the measuring of coverage on or off.
+   *
+   * While it is on, every run measures what the tests cover, and the lines
+   * are marked in the editors when the run ends. Turning it off removes the
+   * marks.
+   */
+  private setCoverage(enabled: boolean) {
+    this.coverageEnabled = enabled;
+    if (!enabled) {
+      this.coverage.clear();
+    }
+    vscode.commands.executeCommand('setContext', 'goTestExplorer.coverageEnabled', enabled);
+  }
+
+  /**
+   * Marks the lines a finished run covered.
+   *
+   * The profile names a file by its import path, so the module of the run
+   * turns that name into the path of the file.
+   */
+  private showCoverage(testConfig: TestConfig, profile: CoverProfile | undefined) {
+    if (!profile || !this.coverageEnabled) {
+      return;
+    }
+    const module = findGoModule(testConfig.dir);
+    if (!module) {
+      return;
+    }
+    const prefix = module.path + '/';
+    const files = new Map<string, CoverBlock[]>();
+    profile.forEach((blocks, name) => {
+      if (name.startsWith(prefix)) {
+        files.set(path.join(module.root, ...name.slice(prefix.length).split('/')), blocks);
+      }
+    });
+    this.coverage.update(files);
+  }
+
   /**
    * Expands every file that is shown.
    *
@@ -334,6 +389,7 @@ export class GoTestExplorer {
       testUri: group.suites[0].uri,
       testName: group.suites[0].name,
       packages: group.packages,
+      coverage: this.coverageEnabled,
     };
     this.enqueueTest(testConfig);
   }
@@ -348,6 +404,7 @@ export class GoTestExplorer {
       functions: tests,
       testUri: testNode.uri,
       testName: path.basename(testNode.uri.fsPath),
+      coverage: this.coverageEnabled,
     };
     return testConfig;
   }
@@ -450,6 +507,7 @@ export class GoTestExplorer {
    * requested and report the suite-level result.
    */
   private onRunCompleted(testConfig: TestConfig, result: RawTestResult) {
+    this.showCoverage(testConfig, result.coverage);
     if (testConfig.packages && testConfig.packages.length > 0) {
       this.onModuleRunCompleted(testConfig, result);
       return;

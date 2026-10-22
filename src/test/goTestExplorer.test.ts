@@ -363,6 +363,73 @@ describe('GoTestExplorer runs a whole module', () => {
     expect(explorer.goTestProvider.isFiltered).toBe(false);
   });
 
+  describe('coverage', () => {
+    const profile = () =>
+      new Map([
+        [
+          'example.com/mod/pkg/a/a.go',
+          [
+            { startLine: 1, endLine: 2, statements: 1, count: 1 },
+            { startLine: 4, endLine: 5, statements: 1, count: 0 },
+          ],
+        ],
+      ]);
+
+    function openEditor(fsPath: string) {
+      const marks: Array<{ key: string; lines: number[] }> = [];
+      __state.visibleTextEditors.push({
+        document: { uri: Uri.file(fsPath) },
+        selection: undefined as never,
+        revealRange: () => {},
+        setDecorations: (type: unknown, ranges: Array<{ start: { line: number } }>) =>
+          marks.push({
+            key: (type as { key: string }).key,
+            lines: ranges.map((r) => r.start.line),
+          }),
+      });
+      return marks;
+    }
+
+    it('measures nothing until it is turned on, then marks the lines of a run', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      const marks = openEditor(path.join(moduleDir, 'pkg', 'a', 'a.go'));
+
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => runGoTest.mock.calls.length > 0);
+      expect(runGoTest.mock.calls[0][0].coverage).toBe(false);
+
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => runGoTest.mock.calls.length > 1);
+      expect(runGoTest.mock.calls[1][0].coverage).toBe(true);
+
+      await waitFor(() => marks.length > 0);
+      expect(marks.map((m) => m.lines)).toEqual([
+        [0, 1],
+        [3, 4],
+      ]);
+      expect(__state.statusItems[0].text).toContain('50.0%');
+      expect(__state.statusItems[0].visible).toBe(true);
+    });
+
+    it('removes the marks when it is turned off', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      const marks = openEditor(path.join(moduleDir, 'pkg', 'a', 'a.go'));
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => marks.length > 0);
+
+      await vscode.commands.executeCommand('goTestExplorer.hideCoverage');
+
+      expect(marks.slice(-2).map((m) => m.lines)).toEqual([[], []]);
+      expect(__state.statusItems[0].visible).toBe(false);
+    });
+  });
+
   it('expands every file that is shown', async () => {
     const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
     const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestBeta']);
