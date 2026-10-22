@@ -94,6 +94,7 @@ describe('extension activation', () => {
     expect(contributed).toContain('goTestExplorer.showTestoutput');
     expect(contributed).toContain('goTestExplorer.goToLocation');
     expect(contributed).toContain('goTestExplorer.filterTests');
+    expect(contributed).toContain('goTestExplorer.filterByStatus');
     expect(contributed).toContain('goTestExplorer.clearFilter');
   });
 });

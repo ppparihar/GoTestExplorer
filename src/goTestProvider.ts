@@ -4,7 +4,7 @@ import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { Config } from './config';
-import { visibleChildren, visibleSuites } from './lib/testFilter';
+import { isActive, TestFilter, TestStatus, visibleChildren, visibleSuites } from './lib/testFilter';
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<
@@ -17,6 +17,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private _discoveredTests: TestNode[] = [];
   private _discovering: boolean;
   private _filter = '';
+  private _statuses: ReadonlySet<TestStatus> = new Set();
   /**
    * The nodes whose result changed since the tree was last redrawn.
    */
@@ -45,6 +46,11 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
 
   private refresh(testNode?: TestNode): void {
     this._pendingResults.clear();
+    if (this._statuses.size > 0) {
+      // A result can move a test in or out of what is shown, and a file in
+      // or out of the tree, so the whole tree is drawn.
+      testNode = undefined;
+    }
     if (!testNode) {
       // The whole tree is drawn, so there is nothing left to draw later.
       this.cancelPendingOutcomes();
@@ -133,17 +139,39 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   }
 
   /**
-   * The files that are shown for the search text.
+   * The statuses the tree is narrowed to. Empty means any status.
    */
-  get visibleTests(): TestNode[] {
-    return visibleSuites(this._discoveredTests, this._filter);
+  get statuses(): ReadonlySet<TestStatus> {
+    return this._statuses;
+  }
+  set statuses(statuses: Iterable<TestStatus>) {
+    this._statuses = new Set(statuses);
+    this.refresh();
   }
 
   /**
-   * The tests of a file that are shown for the search text.
+   * Whether the tree is narrowed to something.
+   */
+  get isFiltered(): boolean {
+    return isActive(this.currentFilter);
+  }
+
+  private get currentFilter(): TestFilter {
+    return { text: this._filter, statuses: this._statuses };
+  }
+
+  /**
+   * The files that are shown.
+   */
+  get visibleTests(): TestNode[] {
+    return visibleSuites(this._discoveredTests, this.currentFilter);
+  }
+
+  /**
+   * The tests of a file that are shown.
    */
   visibleChildrenOf(suite: TestNode): TestNode[] {
-    return this._filter ? visibleChildren(suite, this._filter) : suite.children;
+    return this.isFiltered ? visibleChildren(suite, this.currentFilter) : suite.children;
   }
 
   get discoveredTests(): TestNode[] {

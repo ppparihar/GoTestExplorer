@@ -16,35 +16,59 @@ export function matchesFilter(name: string, filter: string): boolean {
 }
 
 /**
- * The nodes of a file that are shown for the search text.
- *
- * A file whose own name matches shows all of its tests; otherwise only the
- * tests that match are shown. A file with nothing to show is dropped.
+ * What is known about a test: it passed, it failed, or it has not run yet.
  */
-export function visibleChildren<T extends { name: string }>(
-  suite: { name: string; children: T[] },
-  filter: string,
-): T[] {
-  if (matchesFilter(suite.name, filter)) {
-    return suite.children;
-  }
-  return suite.children.filter((child) => matchesFilter(child.name, filter));
+export type TestStatus = 'passed' | 'failed' | 'notRun';
+
+/**
+ * What the tree is narrowed to. Both parts must hold for a test to be shown.
+ */
+export interface TestFilter {
+  /** Words the name of the test, or of its file, must have. */
+  text: string;
+  /** The statuses a test may have. Empty means any status. */
+  statuses: ReadonlySet<TestStatus>;
 }
 
 /**
- * The files that have something to show for the search text.
+ * Whether a filter narrows anything.
  */
-export function visibleSuites<T extends { name: string; children: unknown[] }>(
-  suites: T[],
-  filter: string,
-): T[] {
-  if (!filter.trim()) {
+export function isActive(filter: TestFilter): boolean {
+  return filter.text.trim() !== '' || filter.statuses.size > 0;
+}
+
+interface Leaf {
+  name: string;
+  status: TestStatus;
+}
+
+interface Suite<T extends Leaf> {
+  name: string;
+  children: T[];
+}
+
+/**
+ * The tests of a file that are shown.
+ *
+ * A file whose own name matches the text shows all of its tests for it,
+ * otherwise a test must match the text itself. The status is always the
+ * status of the test.
+ */
+export function visibleChildren<T extends Leaf>(suite: Suite<T>, filter: TestFilter): T[] {
+  const fileMatches = matchesFilter(suite.name, filter.text);
+  return suite.children.filter(
+    (child) =>
+      (fileMatches || matchesFilter(child.name, filter.text)) &&
+      (filter.statuses.size === 0 || filter.statuses.has(child.status)),
+  );
+}
+
+/**
+ * The files that have a test to show.
+ */
+export function visibleSuites<T extends Suite<Leaf>>(suites: T[], filter: TestFilter): T[] {
+  if (!isActive(filter)) {
     return suites;
   }
-  return suites.filter(
-    (suite) =>
-      matchesFilter(suite.name, filter) ||
-      visibleChildren(suite as unknown as { name: string; children: { name: string }[] }, filter)
-        .length > 0,
-  );
+  return suites.filter((suite) => visibleChildren(suite, filter).length > 0);
 }

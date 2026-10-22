@@ -3,6 +3,7 @@ import * as path from 'path';
 import { GoTestProvider } from './goTestProvider';
 import { runGoTest, TestConfig, TestPackage, cancelRunningTests } from './lib/testUtil';
 import { TestNode } from './testNode';
+import { TestStatus } from './lib/testFilter';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { RawTestResult } from './rawTestResult';
@@ -32,6 +33,12 @@ interface ModuleGroup {
    */
   suites: TestNode[];
 }
+
+const STATUS_LABELS: Record<TestStatus, string> = {
+  failed: 'failed',
+  passed: 'passed',
+  notRun: 'not run',
+};
 
 export class GoTestExplorer {
   goTestProvider: GoTestProvider;
@@ -82,7 +89,16 @@ export class GoTestExplorer {
       vscode.commands.registerCommand('goTestExplorer.filterTests', this.onFilterTests.bind(this)),
     );
     context.subscriptions.push(
-      vscode.commands.registerCommand('goTestExplorer.clearFilter', () => this.setFilter('')),
+      vscode.commands.registerCommand(
+        'goTestExplorer.filterByStatus',
+        this.onFilterByStatus.bind(this),
+      ),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.clearFilter', () => {
+        this.goTestProvider.statuses = [];
+        this.setFilter('');
+      }),
     );
     const cancelTestRun = () => {
       // The invocations that have not started are dropped, and the ones
@@ -144,13 +160,52 @@ export class GoTestExplorer {
     input.show();
   }
 
+  /**
+   * Asks for the statuses the tests are narrowed to.
+   */
+  private async onFilterByStatus() {
+    const choices: Array<vscode.QuickPickItem & { status: TestStatus }> = [
+      { label: 'Failed', status: 'failed' },
+      { label: 'Passed', status: 'passed' },
+      { label: 'Not run', status: 'notRun' },
+    ];
+    choices.forEach((choice) => (choice.picked = this.goTestProvider.statuses.has(choice.status)));
+    const picked = await vscode.window.showQuickPick(choices, {
+      title: 'Filter tests by status',
+      placeHolder: 'Show only the tests with these statuses (none picked shows every status)',
+      canPickMany: true,
+    });
+    if (picked) {
+      this.goTestProvider.statuses = picked.map((choice) => choice.status);
+      this.showFilter();
+    }
+  }
+
   private setFilter(text: string) {
     this.goTestProvider.filter = text;
-    const active = this.goTestProvider.filter !== '';
-    this.treeView.message = active
-      ? `Filter: ${this.goTestProvider.filter}. Run All runs only the matching tests.`
+    this.showFilter();
+  }
+
+  /**
+   * Tells the view, and the buttons of its title, what the tree is narrowed to.
+   */
+  private showFilter() {
+    const provider = this.goTestProvider;
+    const parts: string[] = [];
+    if (provider.filter) {
+      parts.push(`"${provider.filter}"`);
+    }
+    if (provider.statuses.size > 0) {
+      parts.push(Array.from(provider.statuses, (status) => STATUS_LABELS[status]).join(' or '));
+    }
+    this.treeView.message = provider.isFiltered
+      ? `Filter: ${parts.join(', ')}. Run All runs only the matching tests.`
       : undefined;
-    vscode.commands.executeCommand('setContext', 'goTestExplorer.filterActive', active);
+    vscode.commands.executeCommand(
+      'setContext',
+      'goTestExplorer.filterActive',
+      provider.isFiltered,
+    );
   }
 
   async onRunSingleTest(testNode: TestNode) {
@@ -179,7 +234,7 @@ export class GoTestExplorer {
    * and the tool decides how to spread them over the available cores.
    */
   private onRunAllTests() {
-    if (this.goTestProvider.filter) {
+    if (this.goTestProvider.isFiltered) {
       // A run of a module has no filter on the names of its tests, so only
       // the files that are shown are run, each with the tests that are shown.
       this.goTestProvider.visibleTests

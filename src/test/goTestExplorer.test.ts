@@ -343,6 +343,25 @@ describe('GoTestExplorer runs a whole module', () => {
     expect(runGoTest.mock.calls[0][0].functions).toEqual(['TestBeta']);
   });
 
+  it('runs only the failed tests when filtered by status', async () => {
+    const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha', 'TestBeta']);
+    explorer.commands.sendDiscoveredTests([a]);
+    explorer.commands.sendTestResult(new TestResult(a.uri, 'TestAlpha', true, []));
+    explorer.commands.sendTestResult(new TestResult(a.uri, 'TestBeta', false, []));
+    __state.quickPickAnswer = (items) =>
+      items.filter((i) => (i as { status: string }).status === 'failed');
+
+    await vscode.commands.executeCommand('goTestExplorer.filterByStatus');
+    expect(explorer.goTestProvider.statuses.has('failed')).toBe(true);
+
+    await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+    await waitFor(() => runGoTest.mock.calls.length > 0);
+    expect(runGoTest.mock.calls[0][0].functions).toEqual(['TestBeta']);
+
+    await vscode.commands.executeCommand('goTestExplorer.clearFilter');
+    expect(explorer.goTestProvider.isFiltered).toBe(false);
+  });
+
   describe('the filter box', () => {
     const openBox = async () => {
       await vscode.commands.executeCommand('goTestExplorer.filterTests');
