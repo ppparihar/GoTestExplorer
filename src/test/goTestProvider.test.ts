@@ -7,6 +7,7 @@ import { TestResult } from '../testResult';
 import { Uri } from './mocks/vscode';
 import { Icons } from '../icons';
 import { Config } from '../config';
+import { __setConfiguration, __state } from './mocks/vscode';
 
 const fileUri = Uri.file('/repo/alpha_test.go');
 
@@ -50,6 +51,53 @@ describe('GoTestProvider', () => {
 
     provider.filter = '';
     expect((await provider.getChildren(suite)).length).toBe(2);
+  });
+
+  it('shows a file with no test function as a file, not as a test', () => {
+    // `testHealth(t)` is a helper that another test runs, so the file has no
+    // Test function and the scan found nothing in it.
+    const file = new TestNode('health_test.go', fileUri, []);
+    commands.sendDiscoveredTests([file]);
+
+    const item = provider.getTreeItem(file);
+
+    // There is no run button, because the context is neither test nor suite.
+    expect(item.contextValue).toBe('emptyTestFile');
+    expect(item.description).toBe('no tests');
+    // A click opens the file, and does not look for a test named like it.
+    expect((item.command as { command: string }).command).toBe('vscode.open');
+    expect((item.command as { arguments: unknown[] }).arguments[0]).toBe(fileUri);
+  });
+
+  it('leaves a file with no test function out of the list, unless asked to show it', async () => {
+    const helpers = new TestNode('health_test.go', fileUri, []);
+    const suite = buildSuite();
+    commands.sendDiscoveredTests([helpers, suite]);
+
+    expect(await provider.getChildren()).toEqual([suite]);
+
+    // Run All and the like read the same list, and never see the empty file.
+    __setConfiguration('goTestExplorer', { showFilesWithoutTests: true });
+    let redrawn = 0;
+    provider.onDidChangeTreeData(() => redrawn++);
+    __state.configListeners.forEach((listener) =>
+      listener({
+        affectsConfiguration: (section) => section === 'goTestExplorer.showFilesWithoutTests',
+      }),
+    );
+
+    expect(redrawn).toBe(1);
+    expect(await provider.getChildren()).toEqual([helpers, suite]);
+    __setConfiguration('goTestExplorer', {});
+  });
+
+  it('still treats a single test as a test', () => {
+    const test = new TestNode('TestAlpha', fileUri);
+
+    const item = provider.getTreeItem(test);
+
+    expect(item.contextValue).toBe('test');
+    expect((item.command as { command: string }).command).toBe('goTestExplorer.goToLocation');
   });
 
   it('applies a test result to the matching node', () => {

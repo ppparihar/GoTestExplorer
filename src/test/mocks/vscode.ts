@@ -562,6 +562,7 @@ export const __state = {
     warning: [] as string[],
     error: [] as string[],
   },
+  configListeners: [] as Array<(event: { affectsConfiguration(section: string): boolean }) => void>,
   registeredCommands: new Map<string, (...args: unknown[]) => unknown>(),
   openedDocuments: [] as Uri[],
   /**
@@ -650,6 +651,7 @@ export function __reset(): void {
   __state.messages.warning = [];
   __state.messages.error = [];
   __state.registeredCommands.clear();
+  __state.configListeners = [];
   __state.openedDocuments = [];
   __state.documentTexts.clear();
   __state.fileWatchers = [];
@@ -709,6 +711,12 @@ export const workspace = {
   },
   onDidSaveTextDocument(listener: (document: { uri: Uri }) => void): Disposable {
     __state.saveListeners.push(listener);
+    return new Disposable();
+  },
+  onDidChangeConfiguration(
+    listener: (event: { affectsConfiguration(section: string): boolean }) => void,
+  ): Disposable {
+    __state.configListeners.push(listener);
     return new Disposable();
   },
   createFileSystemWatcher(glob?: string): MockFileSystemWatcher {

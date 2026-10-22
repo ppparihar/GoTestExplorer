@@ -80,6 +80,14 @@ export class Config {
   }
 
   /**
+   * Whether a test file that holds no test function is listed, when the user
+   * has not said otherwise.
+   */
+  public static get DefaultShowFilesWithoutTests(): boolean {
+    return false;
+  }
+
+  /**
    * Whether the output of a run goes to a terminal when the user has not
    * said otherwise.
    */

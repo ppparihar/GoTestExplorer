@@ -100,6 +100,11 @@
                     "default": {},
                     "description": "The environment variables of a test run. Falls back to go.testEnvVars of the Go extension."
                 },
+                "goTestExplorer.showFilesWithoutTests": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether a test file that has no Test function is listed. Such a file holds helpers that a test in another file runs, so there is nothing to run in it. When it is listed it is marked \"no tests\" and a click opens it."
+                },
                 "goTestExplorer.runInTerminal": {
                     "type": "boolean",
                     "default": true,
