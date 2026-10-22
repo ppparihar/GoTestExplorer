@@ -88,7 +88,7 @@ export async function runCachedDiscoveryBench(root: string, cache: ScanCache): P
 }
 
 async function main(): Promise<void> {
-	const { generateFixture } = await import('./fixtures/gen');
+	const { generateFixture } = await import('./fixtures/gen.js');
 	const packages = Number(process.env['BENCH_PACKAGES'] || 20);
 	const testsPerPackage = Number(process.env['BENCH_TESTS_PER_PACKAGE'] || 20);
 	const filesPerPackage = Number(process.env['BENCH_FILES_PER_PACKAGE'] || 1);

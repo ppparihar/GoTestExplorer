@@ -97,6 +97,25 @@ export function maxParallelTests(resource?: vscode.Uri): number {
 }
 
 /**
+ * The most packages that one `go test` run tests.
+ *
+ * Zero means no limit on the number: the packages of a module are split only
+ * when their arguments would be too long for a command line.
+ */
+export function maxPackagesPerRun(resource?: vscode.Uri): number {
+  const value = readSetting<number>(
+    'maxPackagesPerRun',
+    undefined,
+    Config.DefaultMaxPackagesPerRun,
+    resource,
+  );
+  if (typeof value !== 'number' || !isFinite(value) || value < 0) {
+    return Config.DefaultMaxPackagesPerRun;
+  }
+  return Math.floor(value);
+}
+
+/**
  * The names of the folders that are never walked while looking for test files.
  */
 export function skipFolders(resource?: vscode.Uri): string[] {

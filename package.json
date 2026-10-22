@@ -32,6 +32,12 @@
                     "minimum": 1,
                     "description": "The number of test runs that are allowed to be in flight at the same time."
                 },
+                "goTestExplorer.maxPackagesPerRun": {
+                    "type": "integer",
+                    "default": 0,
+                    "minimum": 0,
+                    "description": "The most packages that one go test run tests when Run All tests a module. 0 means no limit on the number: the packages are split into several runs, one after another, only when their names would be too long for a command line."
+                },
                 "goTestExplorer.skipFolders": {
                     "type": "array",
                     "items": {

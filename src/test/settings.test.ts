@@ -7,6 +7,7 @@ import { DEFAULT_TEST_TIMEOUT } from '../lib/testArgs';
 import {
   readSetting,
   userSetValue,
+  maxPackagesPerRun,
   maxParallelTests,
   skipFolders,
   goPath,
@@ -81,6 +82,32 @@ describe('userSetValue', () => {
 
   it('returns undefined when nothing was inspected', () => {
     expect(userSetValue(undefined)).toBeUndefined();
+  });
+});
+
+describe('maxPackagesPerRun', () => {
+  it('has no limit on the number by default', () => {
+    expect(maxPackagesPerRun()).toBe(0);
+  });
+
+  it('reads the setting', () => {
+    __setConfiguration('goTestExplorer', { maxPackagesPerRun: 50 });
+
+    expect(maxPackagesPerRun()).toBe(50);
+  });
+
+  it('falls back to no limit for a negative or invalid value', () => {
+    __setConfiguration('goTestExplorer', { maxPackagesPerRun: -3 });
+    expect(maxPackagesPerRun()).toBe(0);
+
+    __setConfiguration('goTestExplorer', { maxPackagesPerRun: 'many' });
+    expect(maxPackagesPerRun()).toBe(0);
+  });
+
+  it('rounds a fraction down', () => {
+    __setConfiguration('goTestExplorer', { maxPackagesPerRun: 7.9 });
+
+    expect(maxPackagesPerRun()).toBe(7);
   });
 });
 
@@ -267,6 +294,7 @@ describe('the settings declared in package.json', () => {
   it('declares a default for every setting the code reads', () => {
     const keys = [
       'maxParallelTests',
+      'maxPackagesPerRun',
       'skipFolders',
       'goPath',
       'goBinary',
@@ -282,6 +310,9 @@ describe('the settings declared in package.json', () => {
 
   it('declares the same defaults as the code', () => {
     expect(properties['goTestExplorer.maxParallelTests'].default).toBe(Config.RunMaxParallelTest);
+    expect(properties['goTestExplorer.maxPackagesPerRun'].default).toBe(
+      Config.DefaultMaxPackagesPerRun,
+    );
     expect(properties['goTestExplorer.skipFolders'].default).toEqual(Config.SkipFolders);
     expect(properties['goTestExplorer.goPath'].default).toBe(Config.DefaultGoPath);
     expect(properties['goTestExplorer.goBinary'].default).toBe(Config.DefaultGoBinary);

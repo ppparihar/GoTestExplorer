@@ -3,6 +3,7 @@ import * as path from 'path';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
+import { Config } from './config';
 
 export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private _onDidChangeTreeData: vscode.EventEmitter<TestNode | undefined> = new vscode.EventEmitter<
@@ -18,6 +19,13 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
    * The nodes whose result changed since the tree was last redrawn.
    */
   private readonly _pendingResults: Set<TestNode> = new Set();
+  /**
+   * The nodes that hold a result which finished while a run is going and has
+   * not been drawn yet. They are redrawn together, so a run of many fast tests
+   * does not redraw the tree once per test.
+   */
+  private readonly _pendingOutcomes: Set<TestNode> = new Set();
+  private _outcomeTimer: ReturnType<typeof setTimeout> | undefined;
   constructor(
     private context: vscode.ExtensionContext,
     commands: Commands,
@@ -30,11 +38,46 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     context.subscriptions.push(commands.testCompleted(this.onTestRunCompleted, this));
     context.subscriptions.push(commands.testFileChanged(this.onTestFileChanged, this));
     context.subscriptions.push(commands.testFileRemoved(this.onTestFileRemoved, this));
+    context.subscriptions.push({ dispose: () => this.cancelPendingOutcomes() });
   }
 
   private refresh(testNode?: TestNode): void {
     this._pendingResults.clear();
+    if (!testNode) {
+      // The whole tree is drawn, so there is nothing left to draw later.
+      this.cancelPendingOutcomes();
+    }
     this._onDidChangeTreeData.fire(testNode);
+  }
+
+  /**
+   * Forgets the results that were waiting to be drawn.
+   */
+  private cancelPendingOutcomes(): void {
+    if (this._outcomeTimer !== undefined) {
+      clearTimeout(this._outcomeTimer);
+      this._outcomeTimer = undefined;
+    }
+    this._pendingOutcomes.clear();
+  }
+
+  /**
+   * Draws the results that finished since the last draw.
+   *
+   * The suites that changed are redrawn one by one, which keeps the redraw
+   * small. A batch that touched many suites redraws the whole tree once.
+   */
+  private flushOutcomes(): void {
+    const nodes = Array.from(this._pendingOutcomes);
+    this.cancelPendingOutcomes();
+    if (nodes.length === 0) {
+      return;
+    }
+    if (nodes.length > Config.OutcomeRedrawMaxSuites) {
+      this.refresh();
+      return;
+    }
+    nodes.forEach((node) => this.refresh(node));
   }
 
   getTreeItem(testNode: TestNode): vscode.TreeItem {
@@ -100,19 +143,45 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   }
 
   /**
-   * Applies the outcome of a test that finished while its run is still going,
-   * and redraws the suite it belongs to, so the icon changes straight away.
+   * Applies the outcome of a test that finished while its run is still going.
+   *
+   * The result is applied at once, and the suite it belongs to is redrawn a
+   * moment later together with the other results of that moment, so the icon
+   * changes within {@link Config.OutcomeRedrawDelay} ms without a redraw per
+   * test.
    */
   private onTestOutcome(testResult: TestResult) {
     this.updateTestResult(testResult);
     const suite = this.__discoveredTestsMap.get(
       this.getNodeKey(testResult.uri.fsPath, path.basename(testResult.uri.fsPath)),
     );
+    if (suite) {
+      this.endSuiteSpinnerWhenDone(suite);
+    }
     const node =
       suite ??
       this.__discoveredTestsMap.get(this.getNodeKey(testResult.uri.fsPath, testResult.testName));
-    if (node) {
-      this.refresh(node);
+    if (!node) {
+      return;
+    }
+    this._pendingOutcomes.add(node);
+    if (this._outcomeTimer === undefined) {
+      this._outcomeTimer = setTimeout(() => this.flushOutcomes(), Config.OutcomeRedrawDelay);
+    }
+  }
+
+  /**
+   * Ends the spinner of a suite once none of its tests is running.
+   *
+   * A suite is marked as running when its run starts, and the result of the
+   * suite arrives only when the whole run has finished. Without this, a suite
+   * whose tests have all finished would keep spinning until the slowest part of
+   * the run was over. Its icon then follows its tests: passed, or failed when
+   * one of them failed.
+   */
+  private endSuiteSpinnerWhenDone(suite: TestNode) {
+    if (suite.isLoading && !suite.children.some((child) => child.isLoading)) {
+      suite.loadingCompleted();
     }
   }
   private onDiscoverTestStart() {
@@ -225,6 +294,15 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private onTestRunCompleted(testUris: vscode.Uri[]) {
     if (testUris.length === 1) {
       const testUri = testUris[0];
+      // The file of this run is drawn below, so its waiting results are
+      // dropped. The results of other runs that are still going are drawn now.
+      this._pendingOutcomes.forEach((node) => {
+        if (node.uri.fsPath === testUri.fsPath) {
+          this._pendingOutcomes.delete(node);
+        }
+      });
+      this.flushOutcomes();
+
       const suite = this.__discoveredTestsMap.get(
         this.getNodeKey(testUri.fsPath, path.basename(testUri.fsPath)),
       );

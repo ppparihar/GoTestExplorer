@@ -10,6 +10,7 @@ import {
 } from './goPath';
 import { getCurrentGoPath, getTestEnvVars, getToolsGopath, LineBuffer } from './utils';
 import { buildTargetArgs } from './testArgs';
+import { packageArgument } from '../runner/chunkPackages';
 import { testOutput } from './testOutput';
 import { RunSettings, goBinary, goPath } from './settings';
 import { RawTestResult } from '../rawTestResult';
@@ -242,6 +243,14 @@ export function runGoTest(
     const args: Array<string> = ['test', '-json', ...testconfig.flags];
     const testType: string = testconfig.isBenchmark ? 'Benchmarks' : 'Tests';
 
+    // Ends the run as a failure, whatever went wrong while it was being set up.
+    const failRun = (error: unknown) => {
+      const err = error instanceof Error ? error : new Error(String(error));
+      testOutput.writeLine(`Error: ${testType} failed.`);
+      testOutput.writeLine(err.message);
+      resolve(new RawTestResult(false, [], [], err));
+    };
+
     if (testconfig.isBenchmark) {
       args.push('-benchmem', '-run=^$');
     } else {
@@ -275,8 +284,8 @@ export function runGoTest(
     // 	args.push(testconfig.dir.substr(currentGoWorkspace.length + 1));
     // }
 
-    targetArgs(testconfig).then(
-      (targets) => {
+    Promise.resolve(targetArgs(testconfig))
+      .then((targets) => {
         const outTargets = args.slice(0);
         if (targets.length > 4) {
           outTargets.push('<long arguments omitted>');
@@ -292,7 +301,8 @@ export function runGoTest(
         }
         testOutput.writeLine('');
 
-        args.push(...targets);
+        // A loop, not a spread: a spread of a very long list overflows the stack.
+        targets.forEach((target) => args.push(target));
 
         // The child leads its own process group, so the whole tree can be
         // killed when the run is cancelled. A detached child outlives the
@@ -302,6 +312,16 @@ export function runGoTest(
           env: testEnvVars,
           cwd: testconfig.dir,
           detached,
+        });
+        // The process may fail to start (the tool is missing, or the arguments
+        // are longer than the system accepts). The run then ends as a failure
+        // instead of waiting for a close that never comes.
+        tp.on('error', (error) => {
+          const index = runningTestProcesses.indexOf(tp, 0);
+          if (index > -1) {
+            runningTestProcesses.splice(index, 1);
+          }
+          failRun(error);
         });
         const parser = new GoTestJsonParser(testconfig.onTestFinished);
         const errBuf = new LineBuffer();
@@ -367,13 +387,8 @@ export function runGoTest(
         });
 
         runningTestProcesses.push(tp);
-      },
-      (err) => {
-        testOutput.writeLine(`Error: ${testType} failed.`);
-        testOutput.writeLine(err);
-        resolve(new RawTestResult(false, [], err));
-      },
-    );
+      })
+      .catch((error) => failRun(error));
   });
 }
 
@@ -416,9 +431,7 @@ export function expandFilePathInOutputLine(line: string, cwd: string): string {
  */
 function targetArgs(testconfig: TestConfig): Thenable<Array<string>> {
   if (testconfig.packages && testconfig.packages.length > 0) {
-    return Promise.resolve(
-      testconfig.packages.map((pkg) => (pkg.path === '' ? '.' : './' + pkg.path)),
-    );
+    return Promise.resolve(testconfig.packages.map((pkg) => packageArgument(pkg.path)));
   }
   return Promise.resolve(
     buildTargetArgs({

@@ -335,12 +335,39 @@ finished meant that nothing changed in the tree until the slowest test was
 done. The parser now reports each test the moment its `pass`, `fail` or `skip`
 event arrives, and the suite of that test is redrawn at once, so the icon
 changes while the rest of the run is still going. A test is failed when it or
-one of its subtests failed. This costs one redraw of one suite per test instead
-of one per run; the redraw is aimed at the suite, never at the whole tree. The
+one of its subtests failed. The redraws are batched: the result is applied to
+its node at once, and the suites that changed are redrawn together 50 ms after
+the first of them finished (`Config.OutcomeRedrawDelay`), so no result is shown
+later than that and a run of thousands of fast tests redraws a few times a
+second instead of once per test. A batch that touched more than 20 suites
+redraws the whole tree once, and the end of a run draws what is still waiting. The
 end of the run still reports the suite and the tests that never reported
 (a build failure, a package that crashed), and leaves alone the tests that were
 already shown, which also keeps each test's own output instead of the output of
 the whole package.
+
+**Hardening for large repositories.** Measured on a macOS arm64 machine, with
+the numbers of the run that found them:
+
+- A run that could not start hung for ever. `spawn` threw `E2BIG` with about
+  30,000 packages on macOS, a spread of a very long argument list overflowed the
+  stack, and the process had no `error` handler, so the run's promise stayed
+  pending and the queue slot and the tree spinner never ended. Every one of these
+  now ends the run as a failure (`runGoTest.test.ts`, "cannot be started").
+- "Run All" names every package of a module on the command line, and Windows
+  accepts about 32,000 characters, which is roughly 1,200 packages. A module
+  is now split into runs by the length of its package arguments (8,000 characters
+  on Windows, 100,000 elsewhere), or by `goTestExplorer.maxPackagesPerRun`. A
+  module that fits is still one process, so the packages are compiled once. The
+  runs follow one another, because the tool already uses the cores, the outcome
+  of each test is shown as its run reports it, and a cancel stops the runs that
+  have not started.
+- The parser held every line of output, three times over: about 2.3 times the
+  size of the output (a 34 MB run held 74 MB), and without a limit for a test
+  that logs in a loop (2 million lines, 174 MB, held 393 MB). The output of a
+  test, a package and a run is now bounded to 1,000, 5,000 and 20,000 lines,
+  keeping the first tenth and the last lines with a marker for what was dropped
+  (the same run holds 5 MB). The terminal still receives every line.
 
 **3d. Cancellation** — `src/lib/testUtil.ts:16` exposes `runningTestProcesses`; wire a "Cancel Test Run" command and `CancellationToken` support, killing the child process tree. — **Done**
 
