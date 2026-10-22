@@ -249,3 +249,53 @@ describe('GoTestProvider redraws a run that covers several files', () => {
     expect(refreshed[0]).toBeUndefined();
   });
 });
+
+describe('GoTestProvider shows a test as soon as it finishes', () => {
+  let commands: Commands;
+  let provider: GoTestProvider;
+  let redrawn: (TestNode | undefined)[];
+
+  beforeEach(() => {
+    commands = new Commands();
+    provider = new GoTestProvider(fakeContext(), commands);
+    redrawn = [];
+    commands.sendDiscoveredTests([buildSuite()]);
+    provider.onDidChangeTreeData((node) => {
+      redrawn.push(node);
+    });
+  });
+
+  it('applies the outcome and ends the spinner of the test', () => {
+    const suite = provider.discoveredTests[0];
+    commands.sendTestRunStarted([suite.children[0], suite]);
+    expect(suite.children[0].isLoading).toBe(true);
+
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestAlpha', false, []));
+
+    expect(suite.children[0].isLoading).toBe(false);
+    expect(suite.children[0].testResult.isPassed).toBe(false);
+  });
+
+  it('redraws the suite of the test, once', () => {
+    const suite = provider.discoveredTests[0];
+    redrawn.length = 0;
+
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestAlpha', true, []));
+
+    expect(redrawn).toEqual([suite]);
+  });
+
+  it('leaves the other tests of the run spinning', () => {
+    const suite = new TestNode('beta_test.go', fileUri, [
+      new TestNode('TestOne', fileUri),
+      new TestNode('TestTwo', fileUri),
+    ]);
+    commands.sendDiscoveredTests([suite]);
+    commands.sendTestRunStarted([...suite.children, suite]);
+
+    commands.sendTestOutcome(new TestResult(fileUri, 'TestOne', true, []));
+
+    expect(suite.children[0].isLoading).toBe(false);
+    expect(suite.children[1].isLoading).toBe(true);
+  });
+});

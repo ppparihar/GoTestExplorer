@@ -25,6 +25,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     context.subscriptions.push(commands.discoveredTest(this.onDicoveredTest, this));
     context.subscriptions.push(commands.testDiscoveryStarted(this.onDiscoverTestStart, this));
     context.subscriptions.push(commands.testResult(this.updateTestResult, this));
+    context.subscriptions.push(commands.testOutcome(this.onTestOutcome, this));
     context.subscriptions.push(commands.testRunStarted(this.onTestRunStarted, this));
     context.subscriptions.push(commands.testCompleted(this.onTestRunCompleted, this));
     context.subscriptions.push(commands.testFileChanged(this.onTestFileChanged, this));
@@ -95,6 +96,23 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     if (testNode) {
       testNode.testResult = testResult;
       this._pendingResults.add(testNode);
+    }
+  }
+
+  /**
+   * Applies the outcome of a test that finished while its run is still going,
+   * and redraws the suite it belongs to, so the icon changes straight away.
+   */
+  private onTestOutcome(testResult: TestResult) {
+    this.updateTestResult(testResult);
+    const suite = this.__discoveredTestsMap.get(
+      this.getNodeKey(testResult.uri.fsPath, path.basename(testResult.uri.fsPath)),
+    );
+    const node =
+      suite ??
+      this.__discoveredTestsMap.get(this.getNodeKey(testResult.uri.fsPath, testResult.testName));
+    if (node) {
+      this.refresh(node);
     }
   }
   private onDiscoverTestStart() {

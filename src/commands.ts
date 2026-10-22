@@ -7,6 +7,7 @@ export class Commands {
   private readonly onTestDiscoveryStartedEmitter = new EventEmitter<void>();
   private readonly onTestRunStartedEmitter = new EventEmitter<TestNode[]>();
   private readonly onTestResultEmitter = new EventEmitter<TestResult>();
+  private readonly onTestOutcomeEmitter = new EventEmitter<TestResult>();
   private readonly onTestCompletedEmitter = new EventEmitter<Uri[]>();
   private readonly onTestFileChangedEmitter = new EventEmitter<TestNode>();
   private readonly onTestFileRemovedEmitter = new EventEmitter<string>();
@@ -40,6 +41,20 @@ export class Commands {
   }
   public sendTestResult(testResult: TestResult) {
     this.onTestResultEmitter.fire(testResult);
+  }
+
+  /**
+   * A test finished while the run it belongs to is still going.
+   *
+   * Unlike {@link testResult}, which is applied silently and drawn once when
+   * the run has finished, this redraws the suite of the test straight away,
+   * so the outcome shows as soon as it is known.
+   */
+  public get testOutcome(): Event<TestResult> {
+    return this.onTestOutcomeEmitter.event;
+  }
+  public sendTestOutcome(testResult: TestResult) {
+    this.onTestOutcomeEmitter.fire(testResult);
   }
 
   /**

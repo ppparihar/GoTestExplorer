@@ -71,6 +71,8 @@ interface PackageBuilder {
   output: string[];
   failed: boolean;
   buildFailed: boolean;
+  /** The names of the tests that have failed so far. */
+  failedNames: string[];
 }
 
 /** The outcome of one package. */
@@ -110,6 +112,23 @@ export interface GoTestResults {
   readonly buildFailed: boolean;
 }
 
+/** A test that has just finished, reported while the run is still going. */
+export interface FinishedTest {
+  /** The import path of the package the test belongs to. */
+  readonly package: string;
+  /** The name of the test, as the tool reports it. A subtest is `Parent/Sub`. */
+  readonly name: string;
+  /**
+   * Whether the test passed. A test that was skipped passed, and a test fails
+   * when it or any of its subtests failed.
+   */
+  readonly passed: boolean;
+  /** How long it took, in seconds. */
+  readonly elapsed: number;
+  /** The output the test produced. */
+  readonly output: readonly string[];
+}
+
 /** The output produced by one chunk of the stream. */
 export interface ParsedChunk {
   /** The lines of ordinary test output. */
@@ -140,6 +159,13 @@ export class GoTestJsonParser {
 
   /** Whether a package failed to build. */
   private buildFailed = false;
+
+  /**
+   * @param onTestFinished called as soon as a test has finished, while the
+   * rest of the run is still going, so that its outcome can be shown without
+   * waiting for the whole run.
+   */
+  constructor(private readonly onTestFinished?: (test: FinishedTest) => void) {}
 
   /**
    * Reads a chunk of the stream.
@@ -275,6 +301,11 @@ export class GoTestJsonParser {
           const outcome = this.outcomeFor(event.Package, event.Test);
           outcome.action = event.Action;
           outcome.elapsed = event.Elapsed ?? outcome.elapsed;
+          const pkg = this.packageFor(event.Package);
+          if (event.Action === 'fail') {
+            pkg.failedNames.push(event.Test);
+          }
+          this.reportFinished(event.Package, event.Test, outcome, pkg);
         } else if (event.Action === 'fail' && event.Package) {
           const pkg = this.packageFor(event.Package);
           pkg.failed = true;
@@ -290,13 +321,50 @@ export class GoTestJsonParser {
   }
 
   /**
+   * Tells the listener that a test has finished.
+   *
+   * The listener runs in the middle of reading the stream, so a failure in it
+   * must not stop the rest of the run from being read.
+   */
+  private reportFinished(
+    packageName: string,
+    name: string,
+    outcome: PendingOutcome,
+    pkg: PackageBuilder,
+  ) {
+    if (!this.onTestFinished) {
+      return;
+    }
+    try {
+      this.onTestFinished({
+        package: packageName,
+        name,
+        // The events of the subtests come before the one of their parent,
+        // so the failures are known by now.
+        passed: !hasFailed(pkg.failedNames, name),
+        elapsed: outcome.elapsed,
+        output: outcome.output.slice(),
+      });
+    } catch {
+      // The outcome is still part of the result of the run.
+    }
+  }
+
+  /**
    * What is known about a package, created the first time the package is
    * seen.
    */
   private packageFor(name: string): PackageBuilder {
     let pkg = this.packages.get(name);
     if (!pkg) {
-      pkg = { package: name, tests: new Map(), output: [], failed: false, buildFailed: false };
+      pkg = {
+        package: name,
+        tests: new Map(),
+        output: [],
+        failed: false,
+        buildFailed: false,
+        failedNames: [],
+      };
       this.packages.set(name, pkg);
     }
     return pkg;

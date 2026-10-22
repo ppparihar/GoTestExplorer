@@ -42,6 +42,20 @@ const SIBLING = `
 func TestPassingExtra(t *testing.T) {}
 `;
 
+const FAST_THEN_SLOW = `package fixture
+
+import (
+	"testing"
+	"time"
+)
+
+func TestFast(t *testing.T) {}
+
+func TestLater(t *testing.T) {
+	time.Sleep(2 * time.Second)
+}
+`;
+
 const SLOW = `package cancelfixture
 
 import (
@@ -110,6 +124,31 @@ async function runPackages(packages: { importPath: string; path: string }[]) {
     })),
   });
 }
+
+describe.skipIf(!hasGo)('runGoTest reports a test as soon as it finishes', () => {
+  it('reports a fast test while a slow one is still running', async () => {
+    const file = path.join(fixture, 'a_test.go');
+    fs.writeFileSync(file, FAST_THEN_SLOW);
+    const reported: { name: string; at: number }[] = [];
+
+    const result = await runGoTest({
+      dir: fixture,
+      settings: { buildTags: '', testFlags: [], timeout: '60s', envFile: '', env: {} },
+      flags: [],
+      functions: ['TestFast', 'TestLater'],
+      testUri: Uri.file(file),
+      testName: 'a_test.go',
+      onTestFinished: (test) => reported.push({ name: test.name, at: Date.now() }),
+    });
+    const finishedAt = Date.now();
+
+    expect(result.isPassed).toBe(true);
+    expect(reported.map((t) => t.name)).toEqual(['TestFast', 'TestLater']);
+    // TestLater sleeps for two seconds, so the fast test was shown well
+    // before the run ended.
+    expect(finishedAt - reported[0].at).toBeGreaterThan(1000);
+  });
+});
 
 describe.skipIf(!hasGo)('runGoTest', () => {
   it('reports a test that failed', async () => {

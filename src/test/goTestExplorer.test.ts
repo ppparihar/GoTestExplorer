@@ -168,6 +168,114 @@ describe('GoTestExplorer', () => {
   });
 });
 
+describe('GoTestExplorer shows a test as soon as it finishes', () => {
+  let explorer: GoTestExplorer;
+  let outcomes: TestResult[];
+  let results: TestResult[];
+
+  beforeEach(() => {
+    __reset();
+    runGoTest.mockReset();
+    explorer = new GoTestExplorer(fakeContext());
+    outcomes = [];
+    results = [];
+    explorer.commands.testOutcome((r: TestResult) => outcomes.push(r));
+    explorer.commands.testResult((r: TestResult) => results.push(r));
+  });
+
+  const suite = () =>
+    new TestNode('alpha_test.go', fileUri, [
+      new TestNode('TestAlpha', fileUri),
+      new TestNode('TestBeta', fileUri),
+    ]);
+
+  it('reports a test before the run has finished', async () => {
+    let seenWhileRunning = 0;
+    runGoTest.mockImplementation(async (config) => {
+      config.onTestFinished({
+        package: 'example.com/pkg',
+        name: 'TestAlpha',
+        passed: true,
+        elapsed: 0,
+        output: ['alpha output'],
+      });
+      seenWhileRunning = outcomes.length;
+      return new RawTestResult(true, ['ok'], []);
+    });
+
+    await vscode.commands.executeCommand('goTestExplorer.runTestSuite', suite());
+    await waitFor(() => results.some((r) => r.testName === 'alpha_test.go'));
+
+    expect(seenWhileRunning).toBe(1);
+    expect(outcomes[0].testName).toBe('TestAlpha');
+    expect(outcomes[0].isPassed).toBe(true);
+    expect(outcomes[0].output).toEqual(['alpha output']);
+  });
+
+  it('does not report the test again when the run ends', async () => {
+    runGoTest.mockImplementation(async (config) => {
+      config.onTestFinished({
+        package: 'p',
+        name: 'TestAlpha',
+        passed: true,
+        elapsed: 0,
+        output: [],
+      });
+      return new RawTestResult(true, ['ok'], []);
+    });
+
+    await vscode.commands.executeCommand('goTestExplorer.runTestSuite', suite());
+    await waitFor(() => results.some((r) => r.testName === 'alpha_test.go'));
+
+    // TestBeta never reported, so the end of the run covers it; TestAlpha
+    // keeps the outcome it was shown with.
+    expect(results.map((r) => r.testName).sort()).toEqual(['TestBeta', 'alpha_test.go']);
+  });
+
+  it('marks the suite as failed when a test that was already shown failed', async () => {
+    runGoTest.mockImplementation(async (config) => {
+      config.onTestFinished({
+        package: 'p',
+        name: 'TestAlpha',
+        passed: false,
+        elapsed: 0,
+        output: [],
+      });
+      return new RawTestResult(false, ['--- FAIL: TestAlpha'], ['TestAlpha']);
+    });
+
+    await vscode.commands.executeCommand('goTestExplorer.runTestSuite', suite());
+    await waitFor(() => results.some((r) => r.testName === 'alpha_test.go'));
+
+    expect(results.find((r) => r.testName === 'alpha_test.go')?.isPassed).toBe(false);
+  });
+
+  it('ignores a subtest and a test that was not asked for', async () => {
+    runGoTest.mockImplementation(async (config) => {
+      config.onTestFinished({
+        package: 'p',
+        name: 'TestAlpha/sub',
+        passed: true,
+        elapsed: 0,
+        output: [],
+      });
+      config.onTestFinished({
+        package: 'p',
+        name: 'TestOther',
+        passed: true,
+        elapsed: 0,
+        output: [],
+      });
+      return new RawTestResult(true, ['ok'], []);
+    });
+
+    await vscode.commands.executeCommand('goTestExplorer.runTestSuite', suite());
+    await waitFor(() => results.some((r) => r.testName === 'alpha_test.go'));
+
+    expect(outcomes).toEqual([]);
+  });
+});
+
 describe('GoTestExplorer runs a whole module', () => {
   let explorer: GoTestExplorer;
   let moduleDir: string;
@@ -220,6 +328,30 @@ describe('GoTestExplorer runs a whole module', () => {
       'example.com/mod/pkg/b',
     ]);
     expect(config.packages.map((p: { path: string }) => p.path)).toEqual(['pkg/a', 'pkg/b']);
+  });
+
+  it('matches a finished test to its own package', async () => {
+    const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestSame']);
+    const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestSame']);
+    explorer.commands.sendDiscoveredTests([a, b]);
+    const outcomes: TestResult[] = [];
+    explorer.commands.testOutcome((r: TestResult) => outcomes.push(r));
+    runGoTest.mockImplementation(async (config) => {
+      config.onTestFinished({
+        package: 'example.com/mod/pkg/b',
+        name: 'TestSame',
+        passed: false,
+        elapsed: 0,
+        output: [],
+      });
+      return new RawTestResult(false, [], ['TestSame']);
+    });
+
+    await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+    await waitFor(() => completed.length > 0);
+
+    expect(outcomes.length).toBe(1);
+    expect(outcomes[0].uri.fsPath).toBe(b.uri.fsPath);
   });
 
   it('runs the files of one package in one process', async () => {

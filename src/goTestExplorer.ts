@@ -9,7 +9,7 @@ import { RawTestResult } from './rawTestResult';
 import { TestDiscovery } from './testDiscovery';
 import { TestQueue } from './runner/testQueue';
 import { scanGoSource } from './discovery/goScanner';
-import { hasFailed, PackageResult } from './exec/goTestJsonParser';
+import { FinishedTest, hasFailed, PackageResult } from './exec/goTestJsonParser';
 import { findGoModule, GoModule, importPathOf } from './lib/goModule';
 import { testOutput } from './lib/testOutput';
 import { maxParallelTests, runSettings } from './lib/settings';
@@ -37,6 +37,11 @@ export class GoTestExplorer {
 
   readonly commands: Commands;
   private readonly testQueue: TestQueue;
+  /**
+   * The tests of each run whose outcome was already shown while the run was
+   * going, so that the end of the run does not draw them again.
+   */
+  private readonly reported = new WeakMap<TestConfig, Set<string>>();
 
   constructor(context: vscode.ExtensionContext) {
     this.commands = new Commands();
@@ -201,7 +206,56 @@ export class GoTestExplorer {
   }
 
   private enqueueTest(testConfig: TestConfig) {
+    this.watchTests(testConfig);
     this.testQueue.enqueue(testConfig);
+  }
+
+  /**
+   * Shows the outcome of each test as soon as the tool reports it, instead of
+   * when the whole run has finished.
+   *
+   * A run of one package names the tests it asked for, so the test is found by
+   * its name. A run of several packages is matched on the package as well,
+   * because two packages may hold a test with the same name.
+   */
+  private watchTests(testConfig: TestConfig) {
+    const reported = new Set<string>();
+    this.reported.set(testConfig, reported);
+
+    const owners = new Map<string, { uri: vscode.Uri; name: string }>();
+    if (testConfig.packages && testConfig.packages.length > 0) {
+      testConfig.packages.forEach((pkg) =>
+        pkg.files.forEach((file) =>
+          file.functions.forEach((name) =>
+            owners.set(pkg.importPath + '\0' + name, { uri: file.uri, name }),
+          ),
+        ),
+      );
+    } else {
+      (testConfig.functions || []).forEach((name) =>
+        owners.set(name, { uri: testConfig.testUri, name }),
+      );
+    }
+    const multiPackage = !!testConfig.packages && testConfig.packages.length > 0;
+
+    testConfig.onTestFinished = (test: FinishedTest) => {
+      const owner = owners.get(multiPackage ? test.package + '\0' + test.name : test.name);
+      if (!owner) {
+        // A subtest, or a test that was not asked for.
+        return;
+      }
+      reported.add(owner.uri.fsPath + '\0' + owner.name);
+      this.commands.sendTestOutcome(
+        new TestResult(owner.uri, owner.name, test.passed, test.output.slice()),
+      );
+    };
+  }
+
+  /**
+   * Whether the outcome of a test was already shown while its run was going.
+   */
+  private wasReported(testConfig: TestConfig, uri: vscode.Uri, name: string): boolean {
+    return !!this.reported.get(testConfig)?.has(uri.fsPath + '\0' + name);
   }
 
   /**
@@ -225,9 +279,11 @@ export class GoTestExplorer {
         isTestPassed = false;
         isTestSuitePassed = false;
       }
-      this.commands.sendTestResult(
-        new TestResult(testConfig.testUri, t, isTestPassed, result.output, result.err),
-      );
+      if (!this.wasReported(testConfig, testConfig.testUri, t)) {
+        this.commands.sendTestResult(
+          new TestResult(testConfig.testUri, t, isTestPassed, result.output, result.err),
+        );
+      }
     });
 
     this.commands.sendTestResult(
@@ -268,9 +324,11 @@ export class GoTestExplorer {
             isTestPassed = false;
             isFilePassed = false;
           }
-          this.commands.sendTestResult(
-            new TestResult(file.uri, t, isTestPassed, output, result.err),
-          );
+          if (!this.wasReported(testConfig, file.uri, t)) {
+            this.commands.sendTestResult(
+              new TestResult(file.uri, t, isTestPassed, output, result.err),
+            );
+          }
         });
         this.commands.sendTestResult(
           new TestResult(file.uri, file.name, isFilePassed, output, result.err),

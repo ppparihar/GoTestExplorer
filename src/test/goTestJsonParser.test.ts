@@ -4,6 +4,7 @@ import * as path from 'path';
 import {
   GoTestJsonParser,
   GoTestResults,
+  FinishedTest,
   PackageResult,
   hasFailed,
 } from '../exec/goTestJsonParser';
@@ -265,5 +266,78 @@ describe('hasFailed', () => {
 
   it('does not find a test that did not fail', () => {
     expect(hasFailed([], 'TestAlpha')).toBe(false);
+  });
+});
+
+describe('GoTestJsonParser reports a test when it finishes', () => {
+  function lines(name: string): string[] {
+    return fixture(name)
+      .split('\n')
+      .filter((line) => line.length > 0)
+      .map((line) => line + '\n');
+  }
+
+  it('reports the outcome of every test, subtests included', () => {
+    const finished: FinishedTest[] = [];
+    const parser = new GoTestJsonParser((test) => finished.push(test));
+
+    parser.write(fixture('goTestJsonMixed.jsonl'));
+    parser.end();
+
+    expect(finished.map((t) => [t.name, t.passed])).toEqual([
+      ['TestAlpha/sub1', false],
+      ['TestAlpha', false],
+      ['TestBeta', true],
+      ['TestGamma/ok', true],
+      ['TestGamma', true],
+    ]);
+  });
+
+  it('reports a test before the rest of the stream has arrived', () => {
+    const finished: string[] = [];
+    const parser = new GoTestJsonParser((test) => finished.push(test.name));
+    const stream = lines('goTestJsonMixed.jsonl');
+    const lastAlpha = stream.findIndex((line) =>
+      /"Action":"fail".*"Test":"TestAlpha"[,}]/.test(line),
+    );
+    expect(lastAlpha).toBeGreaterThan(0);
+
+    stream.slice(0, lastAlpha + 1).forEach((line) => parser.write(line));
+
+    // TestBeta and TestGamma have not been read yet.
+    expect(finished).toEqual(['TestAlpha/sub1', 'TestAlpha']);
+  });
+
+  it('reports the output the test produced', () => {
+    const finished: FinishedTest[] = [];
+    const parser = new GoTestJsonParser((test) => finished.push(test));
+
+    parser.write(fixture('goTestJsonMixed.jsonl'));
+
+    const alpha = finished.find((t) => t.name === 'TestAlpha/sub1');
+    expect(alpha?.output.length).toBeGreaterThan(0);
+  });
+
+  it('fails a test whose subtest failed, even when the tool says it passed', () => {
+    const finished: FinishedTest[] = [];
+    const parser = new GoTestJsonParser((test) => finished.push(test));
+    const event = (action: string, test: string) =>
+      JSON.stringify({ Action: action, Package: 'p', Test: test, Elapsed: 0 }) + '\n';
+
+    parser.write(event('run', 'TestA') + event('run', 'TestA/sub'));
+    parser.write(event('fail', 'TestA/sub') + event('pass', 'TestA'));
+
+    expect(finished.find((t) => t.name === 'TestA')?.passed).toBe(false);
+  });
+
+  it('keeps reading when the listener throws', () => {
+    const parser = new GoTestJsonParser(() => {
+      throw new Error('listener failed');
+    });
+
+    parser.write(fixture('goTestJsonMixed.jsonl'));
+    parser.end();
+
+    expect(onlyPackage(parser.results).tests.size).toBe(5);
   });
 });

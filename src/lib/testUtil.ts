@@ -13,7 +13,7 @@ import { buildTargetArgs } from './testArgs';
 import { testOutput } from './testOutput';
 import { RunSettings, goBinary, goPath } from './settings';
 import { RawTestResult } from '../rawTestResult';
-import { GoTestJsonParser } from '../exec/goTestJsonParser';
+import { FinishedTest, GoTestJsonParser } from '../exec/goTestJsonParser';
 //const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const sendSignal = 'SIGKILL';
 
@@ -154,6 +154,12 @@ export interface TestConfig {
    * package where it was asked for.
    */
   packages?: TestPackage[];
+
+  /**
+   * Called as soon as a test of the run has finished, while the rest of the
+   * run is still going.
+   */
+  onTestFinished?: (test: FinishedTest) => void;
 }
 
 export function getBinPath(tool: string): string {
@@ -297,7 +303,7 @@ export function runGoTest(
           cwd: testconfig.dir,
           detached,
         });
-        const parser = new GoTestJsonParser();
+        const parser = new GoTestJsonParser(testconfig.onTestFinished);
         const errBuf = new LineBuffer();
 
         if (token) {
