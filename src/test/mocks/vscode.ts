@@ -50,6 +50,12 @@ export enum TreeItemCollapsibleState {
   Expanded = 2,
 }
 
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3,
+}
+
 export enum OverviewRulerLane {
   Left = 1,
   Center = 2,
@@ -866,6 +872,7 @@ export default {
   TreeItemCollapsibleState,
   OverviewRulerLane,
   StatusBarAlignment,
+  ConfigurationTarget,
   TextEditorRevealType,
   FileChangeType,
   Position,

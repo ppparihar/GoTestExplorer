@@ -23,6 +23,7 @@
  */
 
 import * as fs from 'fs';
+import { constraintOf } from '../lib/buildConstraint';
 
 /** A test function declaration found in a Go source file. */
 export interface GoTestDecl {
@@ -53,6 +54,11 @@ export interface ScanResult {
   readonly confident: boolean;
   /** Why the scan was not confident, when it was not. */
   readonly reason?: string;
+  /**
+   * The build constraint of the file, as an expression such as
+   * `functional && !slow`, when it has one.
+   */
+  readonly constraint?: string;
 }
 
 const CHAR_TAB = 9;
@@ -480,7 +486,7 @@ export function scanGoSource(text: string): ScanResult {
     };
   });
 
-  return { declarations, confident, reason };
+  return { declarations, confident, reason, constraint: constraintOf(text) };
 }
 
 /**

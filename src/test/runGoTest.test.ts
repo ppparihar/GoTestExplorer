@@ -528,25 +528,38 @@ describe.skipIf(!hasGo)('a run of several packages that measures coverage', () =
       fs.mkdirSync(path.join(fixture, dir), { recursive: true });
       fs.writeFileSync(path.join(fixture, dir, name), body);
     };
+    const gate = path.join(fixture, 'streamgate');
+    fs.rmSync(gate, { force: true });
     write('streamfast', 'f.go', 'package streamfast\n\nfunc F() int { return 1 }\n');
     write(
       'streamfast',
       'f_test.go',
       'package streamfast\n\nimport "testing"\n\nfunc TestF(t *testing.T) { F() }\n',
     );
+    // The slow package does not finish until the coverage of the fast one has
+    // been reported, which only happens while the run is still going. It fails
+    // when that does not happen within 20 seconds.
     write('streamslow', 's.go', 'package streamslow\n\nfunc S() int { return 1 }\n');
     write(
       'streamslow',
       's_test.go',
-      'package streamslow\n\nimport (\n\t"testing"\n\t"time"\n)\n\n' +
-        'func TestS(t *testing.T) { S(); time.Sleep(3 * time.Second) }\n',
+      'package streamslow\n\nimport (\n\t"os"\n\t"testing"\n\t"time"\n)\n\n' +
+        'func TestS(t *testing.T) {\n\tS()\n\tfor i := 0; i < 400; i++ {\n' +
+        '\t\tif _, err := os.Stat(os.Getenv("GATE")); err == nil {\n\t\t\treturn\n\t\t}\n' +
+        '\t\ttime.Sleep(50 * time.Millisecond)\n\t}\n' +
+        '\tt.Fatal("the coverage of the fast package was not reported during the run")\n}\n',
     );
 
-    const seen: Array<{ files: string[]; at: number }> = [];
-    const started = Date.now();
+    const seen: string[][] = [];
     const result = await runGoTest({
       dir: fixture,
-      settings: { buildTags: '', testFlags: [], timeout: '60s', envFile: '', env: {} },
+      settings: {
+        buildTags: '',
+        testFlags: [],
+        timeout: '60s',
+        envFile: '',
+        env: { GATE: gate },
+      },
       flags: [],
       functions: [],
       testUri: Uri.file(path.join(fixture, 'streamfast', 'f_test.go')),
@@ -557,17 +570,20 @@ describe.skipIf(!hasGo)('a run of several packages that measures coverage', () =
         path: name,
         files: [] as { uri: Uri; name: string; functions: string[] }[],
       })),
-      onCoverage: (profile) => seen.push({ files: Array.from(profile.keys()), at: Date.now() }),
+      onCoverage: (profile) => {
+        const files = Array.from(profile.keys());
+        seen.push(files);
+        if (files.some((f) => f.endsWith('streamfast/f.go'))) {
+          fs.writeFileSync(gate, 'open');
+        }
+      },
     });
-    const finished = Date.now();
 
-    // The fast package is reported well before the slow one ends the run.
-    const fast = seen.find((entry) => entry.files.some((f) => f.endsWith('streamfast/f.go')));
-    expect(fast).toBeDefined();
-    expect(finished - fast!.at).toBeGreaterThan(1500);
-    expect(started).toBeLessThan(fast!.at);
-    // The slow package is reported too, and the whole profile is in the result.
-    expect(seen.some((entry) => entry.files.some((f) => f.endsWith('streamslow/s.go')))).toBe(true);
+    // The slow package saw the gate open, so the fast package was reported
+    // while the run was going.
+    expect(result.isPassed).toBe(true);
+    expect(seen.some((files) => files.some((f) => f.endsWith('streamfast/f.go')))).toBe(true);
+    expect(seen.some((files) => files.some((f) => f.endsWith('streamslow/s.go')))).toBe(true);
     expect(result.coverage!.size).toBe(2);
   });
 });

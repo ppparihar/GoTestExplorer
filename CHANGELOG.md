@@ -1,5 +1,11 @@
 # Change Log
 
+## Unreleased
+
+### Added
+- **Build tags.** The command "Set Build Tags..." in the menu of the test view (the three dots) asks for the tags that `go test` runs with (`-tags`), for example `functional,integration`, and keeps them in the settings of the workspace, as `goTestExplorer.buildTags`. The view shows the tags that are set. (#30)
+- A test file that a build tag leaves out, such as one that starts with `//go:build functional` when that tag is not set, is shown as "needs build tags", with the constraint in its tooltip. It has no run button and no tests listed, and "Run All" does not run it, so its tests no longer show as passed without having run. Setting the tag brings the file back. Constraints in the older `// +build` form and in the name of a file (`_linux_test.go`) are read too. A constraint that depends on how the tool is run (`cgo`, `race`) is not decided, so its file is kept.
+
 ## V0.3.0
 
 ### Added

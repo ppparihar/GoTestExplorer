@@ -9,6 +9,11 @@ export class TestNode {
     public readonly name: string,
     public uri: vscode.Uri,
     private _children?: TestNode[],
+    /**
+     * The build constraint of the file, such as `functional && !slow`, when the
+     * node stands for a file that has one.
+     */
+    public readonly constraint?: string,
   ) {}
   /**
    * Whether the node stands for a test file, rather than for one test. A file

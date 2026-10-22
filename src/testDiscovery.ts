@@ -97,7 +97,7 @@ export class TestDiscovery {
     const suites = await discoverTests(uri.fsPath, { cache: this.cache });
     return suites.map((suite) => {
       this.warnIfUnconfident(suite);
-      return this.buildSuiteNode(suite.file, suite.declarations);
+      return this.buildSuiteNode(suite.file, suite.declarations, suite.constraint);
     });
   }
 
@@ -107,11 +107,15 @@ export class TestDiscovery {
    * A file with no test functions still gets a node, so that the tree
    * shows that the file was seen and found to hold nothing runnable.
    */
-  private buildSuiteNode(file: string, declarations: readonly GoTestDecl[]): TestNode {
+  private buildSuiteNode(
+    file: string,
+    declarations: readonly GoTestDecl[],
+    constraint?: string,
+  ): TestNode {
     const uri = vscode.Uri.file(file);
     const sorted = declarations.slice().sort((a, b) => a.name.localeCompare(b.name));
     const children = sorted.map((declaration) => new TestNode(declaration.name, uri));
-    return new TestNode(path.basename(file), uri, children);
+    return new TestNode(path.basename(file), uri, children, constraint);
   }
 
   /**
@@ -181,7 +185,9 @@ export class TestDiscovery {
         confident: scan.confident,
         reason: scan.reason,
       });
-      this.commands.sendTestFileChanged(this.buildSuiteNode(filePath, scan.declarations));
+      this.commands.sendTestFileChanged(
+        this.buildSuiteNode(filePath, scan.declarations, scan.constraint),
+      );
     } catch {
       // The file was deleted between the event and the read.
       this.commands.sendTestFileRemoved(filePath);

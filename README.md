@@ -10,6 +10,7 @@ Run and explore Go tests in a tree view inside Visual Studio Code.
 - Parse `go test -json` for accurate results and subtest failures
 - Filter the tests by name and by status (failed, passed, not run); "Run All" then runs only what is shown
 - Show code coverage for runs started from the view: covered and uncovered lines in the editor, the overall figure in the view header, and the coverage of each test file
+- Build tags: set them from the view menu ("Set Build Tags..."); test files that the tags leave out are marked, and not run
 - Cancel running tests (kills the process tree)
 - Show test output in a terminal (with colors) or an output channel
 - Respects `go.*` settings as fallback; configurable via `goTestExplorer.*`

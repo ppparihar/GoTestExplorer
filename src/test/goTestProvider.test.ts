@@ -91,6 +91,34 @@ describe('GoTestProvider', () => {
     __setConfiguration('goTestExplorer', {});
   });
 
+  it('shows a file that the build tags leave out as such, without its tests', async () => {
+    const fn = new TestNode('TestFunctional', fileUri);
+    const file = new TestNode('functional_test.go', fileUri, [fn], 'functional');
+    commands.sendDiscoveredTests([file]);
+
+    // No tag is set, so go test would leave the file out.
+    expect(provider.isExcluded(file)).toBe(true);
+    const item = provider.getTreeItem(file);
+    expect(item.contextValue).toBe('excludedTestFile');
+    expect(item.description).toBe('needs build tags');
+    expect(String(item.tooltip)).toContain('//go:build functional');
+    expect((item.command as { command: string }).command).toBe('vscode.open');
+    expect(await provider.getChildren(file)).toEqual([]);
+
+    // With the tag set it is an ordinary file again, and the row redraws.
+    __setConfiguration('goTestExplorer', { buildTags: 'functional' });
+    let redrawn = 0;
+    provider.onDidChangeTreeData(() => redrawn++);
+    __state.configListeners.forEach((listener) =>
+      listener({ affectsConfiguration: (section) => section === 'goTestExplorer.buildTags' }),
+    );
+    expect(redrawn).toBe(1);
+    expect(provider.isExcluded(file)).toBe(false);
+    expect(provider.getTreeItem(file).contextValue).toBe('testSuite');
+    expect(await provider.getChildren(file)).toEqual([fn]);
+    __setConfiguration('goTestExplorer', {});
+  });
+
   it('still treats a single test as a test', () => {
     const test = new TestNode('TestAlpha', fileUri);
 

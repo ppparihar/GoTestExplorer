@@ -12,6 +12,8 @@ export interface CachedScan {
   readonly confident: boolean;
   /** Why the file could not be scanned with confidence. */
   readonly reason?: string;
+  /** The build constraint of the file, when it has one. */
+  readonly constraint?: string;
 }
 
 interface CacheEntry extends CachedScan {
@@ -52,6 +54,7 @@ export class ScanCache {
       declarations: scan.declarations,
       confident: scan.confident,
       reason: scan.reason,
+      constraint: scan.constraint,
       mtimeMs: stats ? stats.mtimeMs : -1,
       size: stats ? stats.size : -1,
     };

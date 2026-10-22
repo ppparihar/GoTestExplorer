@@ -312,6 +312,59 @@ describe('GoTestExplorer runs a whole module', () => {
     fs.rmSync(moduleDir, { recursive: true, force: true });
   });
 
+  it('does not run a file that the build tags leave out', async () => {
+    const dir = path.join(moduleDir, 'pkg', 'a');
+    const unit = suiteIn(dir, 'unit_test.go', ['TestUnit']);
+    const tagged = new TestNode(
+      'functional_test.go',
+      Uri.file(path.join(dir, 'functional_test.go')),
+      [new TestNode('TestFunctional', Uri.file(path.join(dir, 'functional_test.go')))],
+      'functional',
+    );
+    explorer.commands.sendDiscoveredTests([unit, tagged]);
+
+    await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+    await waitFor(() => runGoTest.mock.calls.length > 0);
+    // Only the file that is not left out is named, so the other is not shown as passed.
+    expect(
+      runGoTest.mock.calls[0][0].packages[0].files.map((f: { name: string }) => f.name),
+    ).toEqual(['unit_test.go']);
+
+    await vscode.commands.executeCommand('goTestExplorer.runTestSuite', tagged);
+    expect(runGoTest.mock.calls.length).toBe(1);
+
+    // With the tag set the file runs too.
+    __setConfiguration('goTestExplorer', { buildTags: 'functional' });
+    await vscode.commands.executeCommand('goTestExplorer.runTestSuite', tagged);
+    await waitFor(() => runGoTest.mock.calls.length > 1);
+    expect(runGoTest.mock.calls[1][0].functions).toEqual(['TestFunctional']);
+    __setConfiguration('goTestExplorer', {});
+  });
+
+  it('keeps the build tags in the settings of the workspace', async () => {
+    __setConfiguration('goTestExplorer', {});
+    __state.workspaceFolders = [{ uri: Uri.file(moduleDir), name: 'w', index: 0 }];
+    __state.quickPickAnswer = undefined;
+    let asked: { value?: string } = {};
+    const window = vscode.window as unknown as {
+      showInputBox: (options: { value?: string }) => Promise<string | undefined>;
+    };
+    window.showInputBox = (options) => {
+      asked = options;
+      return Promise.resolve(' functional,  integration ');
+    };
+
+    await vscode.commands.executeCommand('goTestExplorer.setBuildTags');
+
+    expect(asked.value).toBe('');
+    expect(vscode.workspace.getConfiguration('goTestExplorer').get('buildTags')).toBe(
+      'functional,integration',
+    );
+    const view = (explorer as unknown as { treeView: { message?: string } }).treeView;
+    expect(view.message).toContain('Build tags: functional, integration');
+    __setConfiguration('goTestExplorer', {});
+  });
+
   it('runs every package of a module in one process', async () => {
     const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestA']);
     const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestB']);

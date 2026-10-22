@@ -95,6 +95,7 @@ describe('extension activation', () => {
     expect(contributed).toContain('goTestExplorer.goToLocation');
     expect(contributed).toContain('goTestExplorer.filterTests');
     expect(contributed).toContain('goTestExplorer.expandAll');
+    expect(contributed).toContain('goTestExplorer.setBuildTags');
     expect(contributed).toContain('goTestExplorer.showCoverage');
     expect(contributed).toContain('goTestExplorer.hideCoverage');
     expect(contributed).toContain('goTestExplorer.showCoverageReport');
