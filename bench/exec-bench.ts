@@ -34,7 +34,7 @@ function countPackages(stdout: string): number {
 }
 
 async function main(): Promise<void> {
-	const { generateFixture } = await import('./fixtures/gen');
+	const { generateFixture } = await import('./fixtures/gen.js');
 	const fixture = generateFixture(path.join(os.tmpdir(), 'gotestexplorer-bench-exec'));
 	const result = await runExecBench(fixture.root);
 	console.log(JSON.stringify({
