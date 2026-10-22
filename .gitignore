@@ -3,3 +3,5 @@ node_modules
 .vscode-test/
 *.vsix
 bench/results/run-*.json
+dist
+.claude/autoharness/

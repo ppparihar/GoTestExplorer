@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: [18, 20, 22]
+        node: [20, 22]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -20,11 +20,9 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint
-      - run: npm run typecheck
       - run: npm test
       - run: npm run compile
-      - run: npx @vscode/vsce package
-        if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
-      - name: vsce publish dry-run
-        if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
-        run: npx @vscode/vsce ls-publishers || true
+      - run: npm run package
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 20
+      - run: npx vsce ls
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 20

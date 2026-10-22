@@ -218,19 +218,20 @@
         "bench": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/run-bench.ts",
         "bench:discovery": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/discovery-bench.ts",
         "bench:exec": "tsx --tsconfig ./bench/tsconfig.runtime.json bench/exec-bench.ts",
-        "lint": "eslint src",
+        "lint": "eslint src --max-warnings 0",
         "format": "prettier --write src",
         "format:check": "prettier --check src",
         "compile:tsc": "tsc -p ./",
         "vscode:prepublish": "npm run compile",
         "package": "vsce package",
-        "package:dry": "vsce package --out /dev/null"
+        "package:dry": "vsce ls"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@types/eslint__js": "^8.42.3",
         "@types/node": "^20.19.43",
         "@types/vscode": "~1.85.0",
+        "@vscode/vsce": "^4.0.0",
         "esbuild": "^0.28.2",
         "eslint": "^10.13.0",
         "eslint-config-prettier": "^10.1.8",
