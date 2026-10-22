@@ -50,6 +50,7 @@ export class GoTestExplorer {
    * Whether the runs measure what the tests cover.
    */
   private coverageEnabled = false;
+  private filterMessage: string | undefined;
 
   readonly commands: Commands;
   private readonly testQueue: TestQueue;
@@ -95,7 +96,16 @@ export class GoTestExplorer {
       }),
     );
     context.subscriptions.push(
-      vscode.commands.registerCommand('goTestExplorer.showCoverage', () => this.setCoverage(true)),
+      vscode.commands.registerCommand(
+        'goTestExplorer.showCoverage',
+        this.onShowCoverage.bind(this),
+      ),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        'goTestExplorer.showCoverageReport',
+        this.onShowCoverageReport.bind(this),
+      ),
     );
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.hideCoverage', () => this.setCoverage(false)),
@@ -162,7 +172,50 @@ export class GoTestExplorer {
     if (!enabled) {
       this.coverage.clear();
     }
+    this.coverage.setEnabled(enabled);
+    this.updateMessage();
     vscode.commands.executeCommand('setContext', 'goTestExplorer.coverageEnabled', enabled);
+  }
+
+  /**
+   * Turns coverage on, and says what happens next: coverage is measured by the
+   * runs that start from now on, so the user is offered a run at once.
+   */
+  private async onShowCoverage() {
+    this.setCoverage(true);
+    const runAll = 'Run All Tests';
+    const choice = await vscode.window.showInformationMessage(
+      'Code coverage is on. Run your tests from this view to see which lines they ran (green) and which they did not (red).',
+      runAll,
+    );
+    if (choice === runAll) {
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+    }
+  }
+
+  /**
+   * Lists the files that were covered, the least covered first, and opens the
+   * one that is picked.
+   */
+  private async onShowCoverageReport() {
+    const report = this.coverage.report();
+    if (report.length === 0) {
+      vscode.window.showInformationMessage(
+        'There is no coverage yet. Run tests from the Go Test Explorer with coverage on.',
+      );
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      report.map((entry) => ({
+        label: `${entry.percent.toFixed(1)}%  ${vscode.workspace.asRelativePath(entry.file)}`,
+        description: `${entry.ran} of ${entry.total} statements ran`,
+        file: entry.file,
+      })),
+      { title: 'Code coverage by file', placeHolder: 'Pick a file to open it' },
+    );
+    if (picked) {
+      await vscode.window.showTextDocument(vscode.Uri.file(picked.file));
+    }
   }
 
   /**
@@ -271,6 +324,21 @@ export class GoTestExplorer {
   }
 
   /**
+   * Shows what the filter and the coverage are doing above the tests, so that
+   * the state of the view can be read without guessing from its buttons.
+   */
+  private updateMessage() {
+    const lines = [this.filterMessage];
+    if (this.coverageEnabled) {
+      lines.push(
+        'Coverage is on: run tests here and the lines they ran are marked green, the lines they did not red.',
+      );
+    }
+    const text = lines.filter(Boolean).join('\n');
+    this.treeView.message = text || undefined;
+  }
+
+  /**
    * Tells the view, and the buttons of its title, what the tree is narrowed to.
    */
   private showFilter() {
@@ -282,9 +350,10 @@ export class GoTestExplorer {
     if (provider.statuses.size > 0) {
       parts.push(Array.from(provider.statuses, (status) => STATUS_LABELS[status]).join(' or '));
     }
-    this.treeView.message = provider.isFiltered
+    this.filterMessage = provider.isFiltered
       ? `Filter: ${parts.join(', ')}. Run All runs only the matching tests.`
       : undefined;
+    this.updateMessage();
     vscode.commands.executeCommand(
       'setContext',
       'goTestExplorer.filterActive',

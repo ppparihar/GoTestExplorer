@@ -537,6 +537,9 @@ export class MockQuickPick {
 
 export const __state = {
   quickPicks: [] as MockQuickPick[],
+  shownDocuments: [] as unknown[],
+  /** Chooses the item a `showQuickPick` call returns. */
+  quickPickAnswer: undefined as undefined | ((items: unknown[]) => unknown),
   /** The editors that are visible. */
   visibleTextEditors: [] as MockTextEditor[],
   /** The status bar items the code under test has created. */
@@ -646,6 +649,8 @@ export function __reset(): void {
   __state.documentTexts.clear();
   __state.fileWatchers = [];
   __state.quickPicks = [];
+  __state.shownDocuments = [];
+  __state.quickPickAnswer = undefined;
   __state.visibleTextEditors = [];
   __state.statusItems = [];
   __state.revealed = [];
@@ -800,6 +805,10 @@ export const window = {
       dispose(): void {},
     };
   },
+  showQuickPick<T>(items: T[], _options?: unknown): Promise<T | undefined> {
+    const answer = __state.quickPickAnswer;
+    return Promise.resolve(answer ? (answer(items) as T | undefined) : undefined);
+  },
   createQuickPick(): MockQuickPick {
     const box = new MockQuickPick();
     __state.quickPicks.push(box);
@@ -808,7 +817,8 @@ export const window = {
   registerTreeDataProvider(_id: string, _provider: unknown): Disposable {
     return new Disposable();
   },
-  showTextDocument(): Promise<unknown> {
+  showTextDocument(document: unknown): Promise<unknown> {
+    __state.shownDocuments.push(document);
     return Promise.resolve({});
   },
 };

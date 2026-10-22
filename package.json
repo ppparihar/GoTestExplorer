@@ -190,12 +190,16 @@
         "commands": [
             {
                 "command": "goTestExplorer.showCoverage",
-                "title": "Show Coverage",
+                "title": "Show Code Coverage",
                 "icon": "$(shield)"
             },
             {
+                "command": "goTestExplorer.showCoverageReport",
+                "title": "Show Code Coverage by File"
+            },
+            {
                 "command": "goTestExplorer.hideCoverage",
-                "title": "Hide Coverage",
+                "title": "Hide Code Coverage",
                 "icon": "$(eye-closed)"
             },
             {

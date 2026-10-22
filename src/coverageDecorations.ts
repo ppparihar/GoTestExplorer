@@ -27,6 +27,7 @@ export class CoverageDecorations implements vscode.Disposable {
     0,
   );
   private readonly subscription: vscode.Disposable;
+  private enabled = false;
   /**
    * What the tests covered, keyed by the path of the file.
    */
@@ -35,6 +36,29 @@ export class CoverageDecorations implements vscode.Disposable {
   constructor() {
     // An editor that is opened after the run is marked when it appears.
     this.subscription = vscode.window.onDidChangeVisibleTextEditors(() => this.render());
+    // A click on the percentage opens the report of the files.
+    this.statusItem.command = 'goTestExplorer.showCoverageReport';
+  }
+
+  /**
+   * Tells whether coverage is on. While it is on the status bar shows it, even
+   * before a run has measured anything, so it is clear what to do next.
+   */
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    this.render();
+  }
+
+  /**
+   * The coverage of each file that is known, the least covered file first.
+   */
+  report(): Array<{ file: string; percent: number; ran: number; total: number }> {
+    return Array.from(this.files, ([file, blocks]) => ({
+      file,
+      percent: coveragePercent(blocks),
+      ran: blocks.reduce((sum, block) => sum + (block.count > 0 ? block.statements : 0), 0),
+      total: blocks.reduce((sum, block) => sum + block.statements, 0),
+    })).sort((a, b) => a.percent - b.percent || a.file.localeCompare(b.file));
   }
 
   /**
@@ -75,12 +99,16 @@ export class CoverageDecorations implements vscode.Disposable {
       editor.setDecorations(this.uncoveredType, lines.uncovered.map(range));
     }
     const percent = this.percent;
-    if (percent === undefined) {
+    if (!this.enabled) {
       this.statusItem.hide();
       return;
     }
-    this.statusItem.text = `$(shield) Coverage ${percent.toFixed(1)}%`;
-    this.statusItem.tooltip = 'The share of the statements that the last test runs ran';
+    this.statusItem.text =
+      percent === undefined
+        ? '$(shield) Coverage: run tests to see it'
+        : `$(shield) Coverage ${percent.toFixed(1)}%`;
+    this.statusItem.tooltip =
+      'Code coverage of the last test runs. Green lines ran, red lines did not. Click for the files.';
     this.statusItem.show();
   }
 

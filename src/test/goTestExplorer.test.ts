@@ -406,12 +406,46 @@ describe('GoTestExplorer runs a whole module', () => {
       expect(runGoTest.mock.calls[1][0].coverage).toBe(true);
 
       await waitFor(() => marks.length > 0);
-      expect(marks.map((m) => m.lines)).toEqual([
+      expect(marks.slice(-2).map((m) => m.lines)).toEqual([
         [0, 1],
         [3, 4],
       ]);
       expect(__state.statusItems[0].text).toContain('50.0%');
       expect(__state.statusItems[0].visible).toBe(true);
+    });
+
+    it('tells the user what to do when coverage is turned on', async () => {
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+
+      expect(__state.messages.info.join('\n')).toContain('Run your tests');
+      expect(__state.statusItems[0].text).toContain('run tests');
+      expect(__state.statusItems[0].visible).toBe(true);
+    });
+
+    it('lists the covered files, the least covered first, and opens the one picked', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => completed.length > 0);
+
+      let offered: Array<{ label: string; description: string }> = [];
+      __state.quickPickAnswer = (items) => {
+        offered = items as typeof offered;
+        return items[0];
+      };
+      await vscode.commands.executeCommand('goTestExplorer.showCoverageReport');
+
+      expect(offered.length).toBe(1);
+      expect(offered[0].label).toContain('50.0%');
+      expect(offered[0].description).toBe('1 of 2 statements ran');
+      expect(__state.shownDocuments.length).toBe(1);
+    });
+
+    it('says so when there is no coverage to list', async () => {
+      await vscode.commands.executeCommand('goTestExplorer.showCoverageReport');
+      expect(__state.messages.info.join('\n')).toContain('no coverage yet');
     });
 
     it('removes the marks when it is turned off', async () => {

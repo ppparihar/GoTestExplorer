@@ -97,6 +97,7 @@ describe('extension activation', () => {
     expect(contributed).toContain('goTestExplorer.expandAll');
     expect(contributed).toContain('goTestExplorer.showCoverage');
     expect(contributed).toContain('goTestExplorer.hideCoverage');
+    expect(contributed).toContain('goTestExplorer.showCoverageReport');
     expect(contributed).toContain('goTestExplorer.collapseAll');
     expect(contributed).toContain('goTestExplorer.clearFilter');
   });
