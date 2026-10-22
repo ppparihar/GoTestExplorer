@@ -508,6 +508,7 @@ export class MockInputBox {
 
 export const __state = {
   inputBoxes: [] as MockInputBox[],
+  revealed: [] as Array<{ node: unknown; options: unknown }>,
   /** Chooses the items a `showQuickPick` call returns. */
   quickPickAnswer: undefined as undefined | (<T>(items: T[]) => T[]),
   workspaceFolders: undefined as WorkspaceFolder[] | undefined,
@@ -614,6 +615,7 @@ export function __reset(): void {
   __state.documentTexts.clear();
   __state.fileWatchers = [];
   __state.inputBoxes = [];
+  __state.revealed = [];
   __state.quickPickAnswer = undefined;
   __configCalls.reset();
 }
@@ -712,8 +714,21 @@ export const window = {
     __state.terminals.push(terminal);
     return terminal;
   },
-  createTreeView(_id: string, _options: unknown): { message?: string; dispose(): void } {
-    return { dispose(): void {} };
+  createTreeView(
+    _id: string,
+    _options: unknown,
+  ): {
+    message?: string;
+    reveal(node: unknown, options?: unknown): Promise<void>;
+    dispose(): void;
+  } {
+    return {
+      reveal(node: unknown, options?: unknown): Promise<void> {
+        __state.revealed.push({ node, options });
+        return Promise.resolve();
+      },
+      dispose(): void {},
+    };
   },
   showQuickPick<T>(items: T[], _options?: unknown): Promise<T[] | undefined> {
     const picker = __state.quickPickAnswer;

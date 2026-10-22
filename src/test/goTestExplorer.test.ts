@@ -362,6 +362,18 @@ describe('GoTestExplorer runs a whole module', () => {
     expect(explorer.goTestProvider.isFiltered).toBe(false);
   });
 
+  it('expands every file that is shown', async () => {
+    const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+    const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestBeta']);
+    explorer.commands.sendDiscoveredTests([a, b]);
+    explorer.goTestProvider.filter = 'beta';
+
+    await vscode.commands.executeCommand('goTestExplorer.expandAll');
+
+    expect(__state.revealed.map((r) => r.node)).toEqual([b]);
+    expect(__state.revealed[0].options).toMatchObject({ expand: true });
+  });
+
   describe('the filter box', () => {
     const openBox = async () => {
       await vscode.commands.executeCommand('goTestExplorer.filterTests');

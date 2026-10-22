@@ -174,6 +174,13 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     return this.isFiltered ? visibleChildren(suite, this.currentFilter) : suite.children;
   }
 
+  /**
+   * The file a test belongs to. A file has no parent. Needed to reveal a node.
+   */
+  getParent(testNode: TestNode): TestNode | undefined {
+    return this._discoveredTests.find((suite) => suite.children.includes(testNode));
+  }
+
   get discoveredTests(): TestNode[] {
     return this._discoveredTests;
   }

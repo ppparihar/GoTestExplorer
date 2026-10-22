@@ -71,6 +71,8 @@ export class GoTestExplorer {
     );
     this.treeView = vscode.window.createTreeView('goTestExplorer', {
       treeDataProvider: this.goTestProvider,
+      // The collapse-all button of the view collapses every file.
+      showCollapseAll: true,
     });
     context.subscriptions.push(this.treeView);
 
@@ -84,6 +86,9 @@ export class GoTestExplorer {
       vscode.commands.registerCommand('goTestExplorer.refreshTestExplorer', () => {
         testDiscoverer.discoverAllTests();
       }),
+    );
+    context.subscriptions.push(
+      vscode.commands.registerCommand('goTestExplorer.expandAll', this.onExpandAll.bind(this)),
     );
     context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.filterTests', this.onFilterTests.bind(this)),
@@ -133,6 +138,16 @@ export class GoTestExplorer {
     );
     testDiscoverer.discoverAllTests();
   }
+  /**
+   * Expands every file that is shown. Collapsing is done by the collapse-all
+   * button of the view.
+   */
+  private async onExpandAll() {
+    for (const suite of this.goTestProvider.visibleTests.filter((s) => s.isTestSuite)) {
+      await this.treeView.reveal(suite, { expand: true, select: false, focus: false });
+    }
+  }
+
   /**
    * Asks for the text the tests are narrowed to.
    *
