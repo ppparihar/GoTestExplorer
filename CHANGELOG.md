@@ -1,5 +1,45 @@
 # Change Log
 
+## V0.2.0
+
+Requires VS Code 1.85 or newer.
+
+### Fixed
+- Running a test suite no longer also runs tests whose name starts with the same text (for example `TestAlphaExtra` when only `TestAlpha` was asked for).
+- Every test no longer fails with `invalid value "undefined" for flag -timeout` when `go.testTimeout` is not set. The timeout now defaults to `30s` and is shown in the output.
+- The extension no longer stops running tests after a few runs have failed to start.
+- Tests are discovered in every folder of a multi-root workspace, not only the first one.
+- Test files are found on Windows.
+- A run uses the environment and settings of the file under test, not of the file that happens to be focused.
+- Test results are kept when the tree is refreshed.
+- Running one test no longer starts it twice or shows a spinner that never stops.
+
+### Changed
+- Tests are discovered without the external `go-outline` tool, so nothing needs to be installed and the tree is no longer empty without it. Discovery of 500 test files went from about 250 ms to about 15 ms and starts no processes.
+- The tree updates by itself when a `_test.go` file is saved, created or deleted. There is no need to refresh.
+- Results are read from `go test -json`. A failing subtest marks its parent test as failed.
+- The status of each test is shown as soon as that test finishes, instead of when the whole run is over.
+- "Run All" tests all the packages of a module in one `go test` process, so they are compiled once.
+- The output of a run is written to a terminal, with colours. Set `goTestExplorer.runInTerminal` to `false` to use an output channel instead.
+- More folders are skipped when looking for tests: `node_modules`, `testdata`, `dist`, `build`, `out`, `third_party`, `proto`, `generated` and others. The list is the setting `goTestExplorer.skipFolders`.
+- The refresh and cancel buttons use the built-in VS Code icons.
+
+### Added
+- "Cancel Test Run" stops a run, including the test binary it started. Ctrl+C in the output terminal does the same.
+- Settings under `goTestExplorer.*`: `maxParallelTests`, `skipFolders`, `goPath`, `goBinary`, `testFlags`, `buildTags`, `timeout`, `envFile`, `env` and `runInTerminal`. A setting that is not set falls back to the matching `go.*` setting of the Go extension, so an existing setup keeps working. The Go extension is optional.
+
+### Internal
+- TypeScript 5, ESLint and Prettier, a bundled build, and a CI matrix on Ubuntu, macOS and Windows. The package went from about 944 KB to about 98 KB.
+
+## V0.1.13
+- Fixed "Run All" not running every test.
+
+## V0.1.12
+- Test flags are taken from the Go extension's configuration.
+
+## V0.1.11
+- Support the `go.testEnvFile` setting.
+
 ## V0.1.10
 - Added error message notification for any error occur while discovering tests.
 
