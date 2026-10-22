@@ -61,6 +61,32 @@ export function parseCoverProfile(text: string): CoverProfile {
 }
 
 /**
+ * Reads a cover profile that is still being written.
+ *
+ * The tool appends the blocks of each package to the profile as the package
+ * finishes, so the text arrives in pieces, and a piece may end in the middle
+ * of a line. Each piece is given to {@link push}, which answers with the files
+ * whose blocks it completed, with every block that file has so far.
+ */
+export class CoverageStream {
+  private carry = '';
+  private readonly known: CoverProfile = new Map();
+
+  push(text: string): CoverProfile {
+    const lines = (this.carry + text).split('\n');
+    // The last part is a whole line only when the text ended with a newline.
+    this.carry = lines.pop() ?? '';
+    const touched: CoverProfile = new Map();
+    parseCoverProfile(lines.join('\n')).forEach((blocks, file) => {
+      const all = (this.known.get(file) ?? []).concat(blocks);
+      this.known.set(file, all);
+      touched.set(file, all);
+    });
+    return touched;
+  }
+}
+
+/**
  * Joins the profiles of several runs. A file that is in more than one is taken
  * from the last one that has it.
  */

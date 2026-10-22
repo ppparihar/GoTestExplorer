@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   addCoverage,
+  CoverageStream,
   coveragePercent,
   markedLines,
   mergeCoverProfiles,
@@ -92,5 +93,26 @@ describe('addCoverage', () => {
 
   it('keeps a block that only one of them has', () => {
     expect(addCoverage([block(1, 1)], [block(2, 0)]).length).toBe(2);
+  });
+});
+
+describe('CoverageStream', () => {
+  it('gives the files that a piece completed, with every block they have so far', () => {
+    const stream = new CoverageStream();
+    const first = stream.push('mode: set\nx/a.go:1.1,2.1 1 1\n');
+    expect(Array.from(first.keys())).toEqual(['x/a.go']);
+
+    const second = stream.push('x/b.go:1.1,2.1 1 0\nx/a.go:4.1,5.1 1 0\n');
+    expect(Array.from(second.keys()).sort()).toEqual(['x/a.go', 'x/b.go']);
+    expect(second.get('x/a.go')!.length).toBe(2);
+  });
+
+  it('waits for the end of a line that arrived in two pieces', () => {
+    const stream = new CoverageStream();
+    expect(stream.push('x/a.go:1.1,2').size).toBe(0);
+    const done = stream.push('.1 1 1\n');
+    expect(done.get('x/a.go')).toEqual([
+      { startLine: 1, startCol: 1, endLine: 2, endCol: 1, statements: 1, count: 1 },
+    ]);
   });
 });

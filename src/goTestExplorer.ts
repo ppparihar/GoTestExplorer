@@ -6,6 +6,7 @@ import { TestNode } from './testNode';
 import { CoverageDecorations } from './coverageDecorations';
 import { CoverBlock, CoverProfile } from './lib/coverageProfile';
 import { TestStatus } from './lib/testFilter';
+import { Config } from './config';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { RawTestResult } from './rawTestResult';
@@ -60,6 +61,11 @@ export class GoTestExplorer {
   private coverageEnabled = false;
   private spinnerTimer: ReturnType<typeof setInterval> | undefined;
   private spinnerFrame = 0;
+  /**
+   * The coverage of finished packages that is waiting to be drawn.
+   */
+  private readonly pendingCoverage = new Map<string, CoverBlock[]>();
+  private coverageTimer: ReturnType<typeof setTimeout> | undefined;
   private filterMessage: string | undefined;
 
   readonly commands: Commands;
@@ -322,19 +328,63 @@ export class GoTestExplorer {
     if (!profile || !this.coverageEnabled) {
       return;
     }
+    // The end of the run has the whole profile, so what was waiting to be
+    // drawn is not needed any more.
+    this.cancelPendingCoverage();
+    const files = this.filesOfProfile(testConfig, profile);
+    const wholeModule = !!testConfig.packages && testConfig.packages.length > 0;
+    this.coverage.update(this.scopeOfRun(testConfig, files), wholeModule ? 'replace' : 'add');
+  }
+
+  /**
+   * The files of a profile, by their path. The profile names a file by its
+   * import path, so the module of the run turns that name into the path.
+   */
+  private filesOfProfile(testConfig: TestConfig, profile: CoverProfile) {
+    const files = new Map<string, CoverBlock[]>();
     const module = findGoModule(testConfig.dir);
     if (!module) {
-      return;
+      return files;
     }
     const prefix = module.path + '/';
-    const files = new Map<string, CoverBlock[]>();
     profile.forEach((blocks, name) => {
       if (name.startsWith(prefix)) {
         files.set(path.join(module.root, ...name.slice(prefix.length).split('/')), blocks);
       }
     });
-    const wholeModule = !!testConfig.packages && testConfig.packages.length > 0;
-    this.coverage.update(this.scopeOfRun(testConfig, files), wholeModule ? 'replace' : 'add');
+    return files;
+  }
+
+  /**
+   * Shows the coverage of the packages of a run of a whole module as each of
+   * them finishes, instead of when the last of them has.
+   *
+   * The packages often finish within moments of each other, so what arrives is
+   * drawn together once in a short while, not once per package.
+   */
+  private streamCoverage(testConfig: TestConfig, profile: CoverProfile) {
+    if (!this.coverageEnabled) {
+      return;
+    }
+    this.filesOfProfile(testConfig, profile).forEach((blocks, file) =>
+      this.pendingCoverage.set(file, blocks),
+    );
+    if (this.coverageTimer === undefined) {
+      this.coverageTimer = setTimeout(() => {
+        this.coverageTimer = undefined;
+        const files = new Map(this.pendingCoverage);
+        this.pendingCoverage.clear();
+        this.coverage.update(files, 'stream');
+      }, Config.OutcomeRedrawDelay);
+    }
+  }
+
+  private cancelPendingCoverage() {
+    if (this.coverageTimer !== undefined) {
+      clearTimeout(this.coverageTimer);
+      this.coverageTimer = undefined;
+    }
+    this.pendingCoverage.clear();
   }
 
   /**
@@ -578,6 +628,7 @@ export class GoTestExplorer {
       testName: group.suites[0].name,
       packages: group.packages,
       coverage: this.coverageEnabled,
+      onCoverage: (profile) => this.streamCoverage(testConfig, profile),
     };
     this.enqueueTest(testConfig);
   }

@@ -166,8 +166,13 @@ export class GoTestJsonParser {
    * @param onTestFinished called as soon as a test has finished, while the
    * rest of the run is still going, so that its outcome can be shown without
    * waiting for the whole run.
+   * @param onPackageFinished called as soon as a package has finished, while
+   * the packages after it are still going.
    */
-  constructor(private readonly onTestFinished?: (test: FinishedTest) => void) {}
+  constructor(
+    private readonly onTestFinished?: (test: FinishedTest) => void,
+    private readonly onPackageFinished?: (importPath: string) => void,
+  ) {}
 
   /**
    * Reads a chunk of the stream.
@@ -314,12 +319,15 @@ export class GoTestJsonParser {
             pkg.failedNames.push(event.Test);
           }
           this.reportFinished(event.Package, event.Test, outcome, pkg);
-        } else if (event.Action === 'fail' && event.Package) {
-          const pkg = this.packageFor(event.Package);
-          pkg.failed = true;
-          if (event.FailedBuild) {
-            pkg.buildFailed = true;
+        } else if (event.Package) {
+          if (event.Action === 'fail') {
+            const pkg = this.packageFor(event.Package);
+            pkg.failed = true;
+            if (event.FailedBuild) {
+              pkg.buildFailed = true;
+            }
           }
+          this.onPackageFinished?.(event.Package);
         }
         return;
       }

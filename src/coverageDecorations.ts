@@ -89,9 +89,11 @@ export class CoverageDecorations implements vscode.Disposable {
    *
    * A run of a whole module replaces what was known of the files it covered.
    * A run of part of a package adds to it, so that it never takes back what
-   * other runs covered.
+   * other runs covered. A package of a run of a whole module that has just
+   * finished replaces the files it covered too, but the run is not complete
+   * until it has ended, so it does not make the figure complete.
    */
-  update(covered: ReadonlyMap<string, CoverBlock[]>, mode: 'replace' | 'add'): void {
+  update(covered: ReadonlyMap<string, CoverBlock[]>, mode: 'replace' | 'add' | 'stream'): void {
     if (mode === 'replace') {
       this._complete = true;
     }

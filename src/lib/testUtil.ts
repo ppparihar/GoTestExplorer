@@ -15,7 +15,8 @@ import { packageArgument } from '../runner/chunkPackages';
 import { testOutput } from './testOutput';
 import { RunSettings, goBinary, goPath } from './settings';
 import { RawTestResult } from '../rawTestResult';
-import { CoverProfile, parseCoverProfile } from './coverageProfile';
+import { CoverageStream, CoverProfile, parseCoverProfile } from './coverageProfile';
+import { StringDecoder } from 'string_decoder';
 import { FinishedTest, GoTestJsonParser } from '../exec/goTestJsonParser';
 //const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
 const sendSignal = 'SIGKILL';
@@ -168,6 +169,13 @@ export interface TestConfig {
    * run is still going.
    */
   onTestFinished?: (test: FinishedTest) => void;
+
+  /**
+   * Called when a package of the run has finished, with the coverage of the
+   * files that were added to the profile since the last call, while the rest
+   * of the run is still going. Only a run that measures coverage calls it.
+   */
+  onCoverage?: (profile: CoverProfile) => void;
 }
 
 export function getBinPath(tool: string): string {
@@ -340,7 +348,12 @@ export function runGoTest(
           }
           failRun(error);
         });
-        const parser = new GoTestJsonParser(testconfig.onTestFinished);
+        const parser = new GoTestJsonParser(
+          testconfig.onTestFinished,
+          coverFile && testconfig.onCoverage
+            ? tailCoverProfile(coverFile, testconfig.onCoverage)
+            : undefined,
+        );
         const errBuf = new LineBuffer();
 
         if (token) {
@@ -422,6 +435,43 @@ export function runGoTest(
  * Makes the names of the profile files of the runs differ.
  */
 let coverCounter = 0;
+
+/**
+ * Makes a function that reads what was appended to a profile since it was last
+ * called, and hands the coverage of those files on.
+ *
+ * Only the new bytes are read, so a module with many packages is not read
+ * again in full as each of them finishes.
+ */
+function tailCoverProfile(file: string, onCoverage: (profile: CoverProfile) => void): () => void {
+  const stream = new CoverageStream();
+  const decoder = new StringDecoder('utf8');
+  let offset = 0;
+  return () => {
+    let fd: number | undefined;
+    try {
+      fd = fs.openSync(file, 'r');
+      const size = fs.fstatSync(fd).size;
+      if (size <= offset) {
+        return;
+      }
+      const chunk = Buffer.alloc(size - offset);
+      fs.readSync(fd, chunk, 0, chunk.length, offset);
+      offset = size;
+      const touched = stream.push(decoder.write(chunk));
+      if (touched.size > 0) {
+        onCoverage(touched);
+      }
+    } catch {
+      // The file is not there yet, or cannot be read: the profile is read in
+      // full when the run ends.
+    } finally {
+      if (fd !== undefined) {
+        fs.closeSync(fd);
+      }
+    }
+  };
+}
 
 /**
  * Reads the profile a run wrote, and removes the file. A run that was killed,

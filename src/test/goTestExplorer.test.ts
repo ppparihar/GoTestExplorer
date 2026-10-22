@@ -480,6 +480,58 @@ describe('GoTestExplorer runs a whole module', () => {
       expect(__state.statusItems[0].text).not.toContain('sync~spin');
     });
 
+    it('shows the coverage of a package while Run All is still going', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      const b = suiteIn(path.join(moduleDir, 'pkg', 'b'), 'b_test.go', ['TestBeta']);
+      explorer.commands.sendDiscoveredTests([a, b]);
+      const header = () => (explorer as unknown as { treeView: { description?: string } }).treeView;
+      const row = (suite: TestNode) => explorer.goTestProvider.getTreeItem(suite).description;
+      const block = (count: number) => [
+        { startLine: 1, startCol: 1, endLine: 1, endCol: 9, statements: 1, count },
+      ];
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+
+      let finish: (result: RawTestResult) => void = () => {};
+      runGoTest.mockImplementation(
+        (config) =>
+          new Promise<RawTestResult>((resolve) => {
+            finish = resolve;
+            // The first package finishes, and its test with it.
+            config.onTestFinished({
+              package: 'example.com/mod/pkg/a',
+              name: 'TestAlpha',
+              passed: true,
+              elapsed: 0,
+              output: [],
+            });
+            config.onCoverage(new Map([['example.com/mod/pkg/a/a.go', block(1)]]));
+          }),
+      );
+      await vscode.commands.executeCommand('goTestExplorer.runAllTest');
+
+      // The file of the first package shows its coverage, and the file of the
+      // package that is still running shows none. The figure is not complete.
+      await waitFor(() => row(a) === '100.0%');
+      expect(row(b)).toBeUndefined();
+      expect(header().description).toContain('Coverage 100.0% (partial)');
+
+      // The second package finishes, then the run ends.
+      finish(
+        new RawTestResult(
+          true,
+          [],
+          [],
+          undefined,
+          new Map(),
+          new Map([
+            ['example.com/mod/pkg/a/a.go', block(1)],
+            ['example.com/mod/pkg/b/b.go', block(0)],
+          ]),
+        ),
+      );
+      await waitFor(() => header().description === 'Coverage 50.0%');
+    });
+
     it('lists the covered files, the least covered first, and opens the one picked', async () => {
       const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
       explorer.commands.sendDiscoveredTests([a]);
