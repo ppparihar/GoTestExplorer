@@ -240,6 +240,23 @@ export class WorkspaceConfiguration {
 		languageIds?: string[];
 	} {
 		const inspected = this.inspectFn ? this.inspectFn(key) : {};
+		if (!this.inspectFn && this.values[key] !== undefined) {
+			// A value in the record is a value the user set, so it is reported
+			// as the global value. The default of a setting is not in the
+			// record, so it is not reported at all.
+			return { key, globalValue: this.values[key] } as unknown as {
+				key: string;
+				defaultValue?: T;
+				globalValue?: T;
+				workspaceValue?: T;
+				workspaceFolderValue?: T;
+				defaultLanguageValue?: T;
+				globalLanguageValue?: T;
+				workspaceLanguageValue?: T;
+				workspaceFolderLanguageValue?: T;
+				languageIds?: string[];
+			};
+		}
 		return { key, ...inspected } as unknown as {
 			key: string;
 			defaultValue?: T;

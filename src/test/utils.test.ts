@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { getToolsEnvVars, getTestEnvVars, getCurrentGoPath, promptForMissingTool, resetMissingToolWarnings } from '../lib/utils';
 import { __configCalls, __reset, __setConfiguration, __state, Position, Selection, Uri } from './mocks/vscode';
 
@@ -87,25 +90,25 @@ describe('promptForMissingTool', () => {
 
 describe('getTestEnvVars', () => {
 	it('layers the test environment on top of the tool environment', () => {
-		const config = {
-			get: (): any => undefined,
-			has: () => false,
-			inspect: (): Record<string, unknown> => ({}),
-			testEnvVars: { EXTRA: 'extra-value' }
-		};
-		const env = getTestEnvVars(config as never, testUri);
+		const env = getTestEnvVars('', { EXTRA: 'extra-value' }, testUri);
 		expect(env.EXTRA).toBe('extra-value');
 		expect(env.FROM_TEST_FILE).toBe('test-file-value');
 	});
 
 	it('does not pick up the focused editor environment', () => {
-		const config = {
-			get: (): any => undefined,
-			has: () => false,
-			inspect: (): Record<string, unknown> => ({}),
-			testEnvVars: {}
-		};
-		const env = getTestEnvVars(config as never, testUri);
+		const env = getTestEnvVars('', {}, testUri);
 		expect(env.FROM_ACTIVE_EDITOR).toBeUndefined();
+	});
+
+	it('lets a variable of the settings win over the same variable of the file', () => {
+		const file = path.join(os.tmpdir(), 'gotestexplorer-env-file');
+		fs.writeFileSync(file, 'EXTRA=from-file\nFROM_FILE=file-value\n');
+		try {
+			const env = getTestEnvVars(file, { EXTRA: 'from-settings' }, testUri);
+			expect(env.EXTRA).toBe('from-settings');
+			expect(env.FROM_FILE).toBe('file-value');
+		} finally {
+			fs.rmSync(file, { force: true });
+		}
 	});
 });

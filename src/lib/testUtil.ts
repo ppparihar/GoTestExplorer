@@ -2,10 +2,11 @@ import cp = require('child_process');
 import * as vscode from 'vscode';
 import fs = require('fs');
 import path = require('path');
-import { getBinPathWithPreferredGopath, getBinPathFromEnvVar, envPath } from './goPath';
+import { getBinPathWithPreferredGopath, getBinPathFromEnvVar, envPath, resolveHomeDir } from './goPath';
 import { getCurrentGoPath, getTestEnvVars, getToolsGopath, LineBuffer } from './utils';
-import { buildTargetArgs, resolveTestTimeout } from './testArgs';
+import { buildTargetArgs } from './testArgs';
 import { testOutput } from './testOutput';
+import { RunSettings, goBinary, goPath } from './settings';
 import { RawTestResult } from '../rawTestResult';
 import { GoTestJsonParser } from '../exec/goTestJsonParser';
 //const testSuiteMethodRegex = /^\(([^)]+)\)\.(Test.*)$/;
@@ -112,11 +113,11 @@ export interface TestConfig {
 	 */
 	dir: string;
 	/**
-	 * Configuration for the Go extension
+	 * The settings that decide how the run is carried out.
 	 */
-	goConfig: vscode.WorkspaceConfiguration;
+	settings: RunSettings;
 	/**
-	 * Test flags to override the testFlags and buildFlags from goConfig.
+	 * Test flags to override the testFlags and buildFlags from the settings.
 	 */
 	flags: string[];
 	/**
@@ -157,6 +158,31 @@ export function getBinPath(tool: string): string {
 }
 
 /**
+ * The path of the go binary that a run uses.
+ *
+ * The user can point at a binary of their own, and can set a GOPATH, in
+ * which case the binary is looked for in the bin folder of that GOPATH.
+ * When neither is set, the binary is looked for the way it was before: the
+ * one the Go extension names, the one in GOROOT, and the one on the PATH.
+ *
+ * @param resource the file the settings are resolved against.
+ */
+export function getGoBinaryPath(resource?: vscode.Uri): string {
+	const binary = goBinary(resource);
+	if (binary) {
+		return resolveHomeDir(binary);
+	}
+	const gopath = goPath(resource);
+	if (gopath) {
+		const fromGopath = getBinPathFromEnvVar('go', resolveHomeDir(gopath), true);
+		if (fromGopath) {
+			return fromGopath;
+		}
+	}
+	return getBinPath('go');
+}
+
+/**
  * Reports whether a tool can actually be executed.
  *
  * {@link getBinPath} falls back to returning the bare tool name when it
@@ -194,8 +220,8 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 			testOutput.show(true);
 		}
 
-		let buildTags: string = testconfig.goConfig['buildTags'];
-		let testFlags: Array<string> = testconfig.goConfig['testFlags'] || [];
+		let buildTags: string = testconfig.settings.buildTags;
+		let testFlags: Array<string> = testconfig.settings.testFlags || [];
 		// The tool writes a JSON event per line, so the outcome of every
 		// test is read from the stream rather than scraped from the text.
 		let args: Array<string> = ['test', '-json', ...testconfig.flags];
@@ -204,7 +230,7 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 		if (testconfig.isBenchmark) {
 			args.push('-benchmem', '-run=^$');
 		} else {
-			args.push('-timeout', resolveTestTimeout(testconfig.goConfig['testTimeout']));
+			args.push('-timeout', testconfig.settings.timeout);
 		}
 		if (buildTags && testconfig.flags.indexOf('-tags') === -1) {
 			args.push('-tags', buildTags);
@@ -212,8 +238,8 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 		
 		testFlags.forEach((flag)=> args.push(flag));
 
-		let testEnvVars = getTestEnvVars(testconfig.goConfig, testconfig.testUri);
-		let goRuntimePath = getBinPath('go');
+		let testEnvVars = getTestEnvVars(testconfig.settings.envFile, testconfig.settings.env, testconfig.testUri);
+		let goRuntimePath = getGoBinaryPath(testconfig.testUri);
 
 		if (!goRuntimePath) {
 			const message = 'Cannot find "go" binary. Update PATH or GOROOT appropriately';
@@ -238,6 +264,12 @@ export function runGoTest(testconfig: TestConfig, token?: vscode.CancellationTok
 				outTargets.push(...targets);
 			}
 			testOutput.writeLine(['Running tool:', goRuntimePath, ...outTargets].join(' '));
+			// The timeout that is in force is shown, so a run that fails
+			// because of it can be told apart from a run that failed for
+			// another reason.
+			if (!testconfig.isBenchmark) {
+				testOutput.writeLine(`Timeout: ${testconfig.settings.timeout}`);
+			}
 			testOutput.writeLine('');
 
 			args.push(...targets);

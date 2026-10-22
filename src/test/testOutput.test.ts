@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { decorateLine, TestOutput } from '../lib/testOutput';
-import { __reset, __state } from './mocks/vscode';
+import { decorateLine, TestOutput, ChannelOutput, testOutput } from '../lib/testOutput';
+import { __reset, __setConfiguration, __state } from './mocks/vscode';
 
 beforeEach(() => {
 	__reset();
@@ -107,5 +107,62 @@ describe('TestOutput', () => {
 		terminal.sendText('x');
 
 		expect(stopped).toBe(0);
+	});
+});
+
+describe('testOutput', () => {
+	it('writes to the terminal by default', () => {
+		const terminals = __state.terminals.length;
+		const channels = __state.outputChannels.length;
+
+		testOutput.writeLine('hello');
+		// The output is kept until the terminal is opened.
+		testOutput.show();
+
+		expect(__state.terminals.length).toBe(terminals + 1);
+		expect(__state.terminals[__state.terminals.length - 1].text).toContain('hello');
+		expect(__state.outputChannels.length).toBe(channels);
+	});
+
+	it('writes to an output channel when the user asked for one', () => {
+		__setConfiguration('goTestExplorer', { runInTerminal: false });
+		const terminals = __state.terminals.length;
+		const channels = __state.outputChannels.length;
+
+		testOutput.writeLine('hello');
+
+		expect(__state.terminals.length).toBe(terminals);
+		expect(__state.outputChannels.length).toBe(channels + 1);
+		expect(__state.outputChannels[__state.outputChannels.length - 1].lines.join('\n')).toContain('hello');
+	});
+});
+
+describe('ChannelOutput', () => {
+	it('makes no channel before one is needed', () => {
+		const channels = __state.outputChannels.length;
+
+		new ChannelOutput('Tests');
+
+		expect(__state.outputChannels.length).toBe(channels);
+	});
+
+	it('writes the lines to the channel', () => {
+		const output = new ChannelOutput('Tests');
+		output.writeLine('hello');
+		output.write('world');
+
+		const channel = __state.outputChannels[__state.outputChannels.length - 1];
+		expect(channel.name).toBe('Tests');
+		expect(channel.lines).toContain('hello');
+		expect(channel.lines).toContain('world');
+	});
+
+	it('clears the channel', () => {
+		const output = new ChannelOutput('Tests');
+		output.writeLine('hello');
+		output.clear();
+
+		const channel = __state.outputChannels[__state.outputChannels.length - 1];
+		expect(channel.lines).toEqual([]);
 	});
 });

@@ -74,16 +74,26 @@ export function killProcess(p: cp.ChildProcess) {
 	}
 }
 
-export function getTestEnvVars(config: vscode.WorkspaceConfiguration, workspaceUri?: vscode.Uri): any {
+/**
+ * Builds the environment of a test run.
+ *
+ * The variables of the file and the variables of the settings are applied on
+ * top of the environment of the extension, so a run sees the same variables
+ * the user would see in a terminal.
+ *
+ * @param envFile the file that holds environment variables.
+ * @param env the environment variables of the settings.
+ * @param workspaceUri the file the environment is resolved against.
+ */
+export function getTestEnvVars(envFile: string, env: { [key: string]: any }, workspaceUri?: vscode.Uri): any {
 	const envVars = getToolsEnvVars(workspaceUri);
-	const testEnvConfig = config['testEnvVars'] || {};
+	const testEnvConfig = env || {};
 
 	let fileEnv: { [key: string]: any } = {};
-	let testEnvFile = config['testEnvFile'];
-	if (testEnvFile) {
-		testEnvFile = resolvePath(testEnvFile);
+	if (envFile) {
+		const file = resolvePath(envFile);
 		try {
-			fileEnv = parseEnvFile(testEnvFile);
+			fileEnv = parseEnvFile(file);
 		} catch (e) {
 			console.log(e);
 		}

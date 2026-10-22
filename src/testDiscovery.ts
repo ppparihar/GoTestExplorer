@@ -7,7 +7,7 @@ import { discoverTests, DiscoveredSuite } from "./discovery/discover";
 import { isInSkippedFolder } from "./discovery/fileWalker";
 import { ScanCache } from "./discovery/scanCache";
 import { GoTestDecl } from "./discovery/goScanner";
-import { Config } from "./config";
+import { skipFolders } from "./lib/settings";
 
 export class TestDiscovery {
 
@@ -223,7 +223,7 @@ export class TestDiscovery {
      * scanned, and not inside a directory that is skipped.
      */
     private isInScope(filePath: string): boolean {
-        if (isInSkippedFolder(filePath, Config.SkipFolders)) {
+        if (isInSkippedFolder(filePath, skipFolders())) {
             return false;
         }
         return this.roots.some(root => isUnder(root, filePath));

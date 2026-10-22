@@ -73,7 +73,7 @@ look now.
 | T3 | tslint 5.8 (unmaintained since 2019), 6-rule config, `defaultSeverity: warning` — does not fail a build. No ESLint, no Prettier. | `tslint.json` |
 | T4 | CI is a Travis config plus a lone CodeQL workflow. No build/lint/test/package job matrix. | `.travis.yml`, `.github/workflows/codeql-analysis.yml` |
 | T5 | Dead weight: `src/fileSystemProvider.ts` implements write/delete/rename/watch for a provider that is **never registered**; `mkdirp` + `rimraf` exist only for those unused paths; `getToolsGopath`, `resolveHomeDir`, `stripBOM` are duplicated across `src/lib/utils.ts` and `src/lib/goPath.ts`. | `src/fileSystemProvider.ts`, `package.json:138-141`, `src/lib/utils.ts:9,66,130` vs `src/lib/goPath.ts:100,105` |
-| T6 | No `contributes.configuration` — every knob is hardcoded. No `extensionDependencies` on `golang.go` despite depending on its settings (and breaking without them, see C4). | `package.json:23-119`, `src/config.ts` |
+| T6 | No `contributes.configuration` — every knob is hardcoded. No `extensionDependencies` on `golang.go` despite depending on its settings (and breaking without them, see C4). | `package.json:23-119`, `src/config.ts` | **Fixed (3g)**: every knob is a declared setting; the Go settings are a fallback, so `golang.go` stays optional. |
 | T7 | README is 4 lines; marketplace metadata is minimal (description `"Go Test Explorer"`, `categories: ["Other"]`). | `README.md`, `package.json:5,16-18` |
 | T8 | `tsc` output is shipped un-bundled (`main: ./out/extension`) — the whole `node_modules` goes into the VSIX. | `package.json:22,131`, `.vscodeignore` |
 
@@ -127,7 +127,7 @@ Each phase is independently shippable and independently verifiable.
 | Phase 0 — Baseline and test harness | Done | `npm test` runs 242 assertions across 16 files; `npm run bench` writes `bench/results/baseline.json` |
 | Phase 1 — Correctness fixes | Done | C1–C12 applied; each fix has a regression test in `src/test/` |
 | Phase 2 — Discovery performance | Done | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0; a refresh over a warm cache costs 3.6 ms and a saved file reaches the tree without a manual refresh |
-| Phase 3 — Execution performance | In progress | 3a–3f done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, the tree is redrawn once per run instead of once per test, a run can be cancelled — the whole process tree included — "Run All" tests every package of a module in one process, and the output of a run goes to a terminal that can stop it with Ctrl+C |
+| Phase 3 — Execution performance | In progress | 3a–3g done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, the tree is redrawn once per run instead of once per test, a run can be cancelled — the whole process tree included — "Run All" tests every package of a module in one process, the output of a run goes to a terminal that can stop it with Ctrl+C, and every knob is a setting that falls back to the Go extension's |
 | Phase 4 — Toolchain and delivery | Partially done | TypeScript 5, `@types/vscode` 1.85, Vitest, `tsx` landed as Phase 0 prerequisites; the rest of Phase 4 is still open |
 | Phase 5 — Native Testing API | Not started | Deferred |
 | Phase 6 — Feature parity | Not started | Deferred |
@@ -418,9 +418,30 @@ was not always the path of the message — a line that names a file before the
 message expanded the wrong one — and it expanded only the first path of a
 line.
 
-**3g. Configuration**
+**3g. Configuration** — **Done**
 
 Add `contributes.configuration` for: `maxParallelTests`, `skipFolders`, `goPath`/`goBinary`, `testFlags`, `buildTags`, `timeout`, `envFile`, `env`, `runInTerminal`. Read `go.*` settings from the Go extension as a **fallback**, with the extension's own settings taking precedence, and validate that `go.testTimeout` is present (C4).
+
+**Done.** Every knob is a `goTestExplorer.*` setting declared in
+`contributes.configuration`, and `src/lib/settings.ts` is the only place that
+reads them. A setting that the user has not set falls back to the setting of
+the Go extension (`go.testFlags`, `go.buildTags`, `go.testTimeout`,
+`go.testEnvFile`, `go.testEnvVars`, `go.gopath`), and only then to the default,
+so an existing setup keeps working with no configuration. The extension's own
+setting wins over the Go one, whatever the scope of either.
+
+`go.testTimeout` was read without a default, so a user who had not set it ran
+`go test -timeout undefined`, which fails the run (C4). The timeout now
+defaults to `30s` and is written to the output, so the value in force is
+visible. The default of every setting is asserted against the `package.json`
+entry, so the two can not drift apart.
+
+The binary that is run is `goTestExplorer.goBinary` when it is set, then
+`$GOPATH/bin/go`, then the `go` on the `PATH`. Discovery skips the folders the
+user asked for, and the queue reads the parallelism limit when it admits work,
+so changing the setting takes effect without a reload. `runInTerminal: false`
+sends the output to an output channel instead of a terminal, for the users who
+do not want a terminal per run.
 
 **Exit criteria:**
 - A subtest failure marks its parent test failed. **Met** — the failed test is `TestAlpha/sub` and `TestAlpha` is reported as failed; `src/test/goTestExplorer.test.ts` covers it.

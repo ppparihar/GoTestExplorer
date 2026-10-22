@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { TestDiscovery } from '../testDiscovery';
 import { TestNode } from '../testNode';
 import { Commands } from '../commands';
-import { __state, __reset, __fireFileWatchEvent, Uri } from './mocks/vscode';
+import { __state, __reset, __setConfiguration, __fireFileWatchEvent, Uri } from './mocks/vscode';
 
 class FakeCommands {
 	discoveryStarted = 0;
@@ -234,6 +234,22 @@ describe('TestDiscovery workspace path resolution', () => {
 		expect(commands.discovered[0].map(n => n.name)).toEqual(['alpha_test.go']);
 	});
 });
+
+	it('does not walk a folder the user asked to skip', async () => {
+		const folder = makeTempDir();
+		writeTestFile(folder, 'alpha_test.go');
+		const fixtures = path.join(folder, 'fixtures');
+		fs.mkdirSync(fixtures);
+		writeTestFile(fixtures, 'fixture_test.go');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+		__setConfiguration('goTestExplorer', { skipFolders: ['fixtures'] });
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands, fakeContext()).discoverAllTests();
+		await waitFor(() => commands.discovered.length > 0);
+
+		expect(commands.discovered[0].map(n => n.name)).toEqual(['alpha_test.go']);
+	});
 
 describe('TestDiscovery file watching', () => {
 	it('watches the workspace for Go test files', () => {

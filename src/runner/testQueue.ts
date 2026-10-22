@@ -16,15 +16,25 @@ export class TestQueue {
 
 	/**
 	 * @param run executes a single test invocation.
-	 * @param maxParallel the maximum number of concurrent invocations.
+	 * @param maxParallel the maximum number of concurrent invocations. It may
+	 * be a function, so that a limit the user can change is read again for
+	 * every run.
 	 * @param onCompleted called when a run produced a result.
 	 * @param onFailed called when a run threw or rejected.
 	 */
 	constructor(
 		private readonly run: (config: TestConfig) => Promise<RawTestResult>,
-		private readonly maxParallel: number,
+		private readonly maxParallel: number | (() => number),
 		private readonly onCompleted: (config: TestConfig, result: RawTestResult) => void,
 		private readonly onFailed: (config: TestConfig, error: Error) => void) {
+	}
+
+	/**
+	 * The number of invocations that may be in flight at the same time.
+	 */
+	private get limit(): number {
+		const value = typeof this.maxParallel === 'function' ? this.maxParallel() : this.maxParallel;
+		return typeof value === 'number' && value >= 1 ? Math.floor(value) : 1;
 	}
 
 	/**
@@ -60,7 +70,7 @@ export class TestQueue {
 	}
 
 	private drain(): void {
-		while (this.inFlight < this.maxParallel && this.queue.length > 0) {
+		while (this.inFlight < this.limit && this.queue.length > 0) {
 			const config = this.queue.shift();
 			this.start(config);
 		}

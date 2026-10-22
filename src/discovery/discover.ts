@@ -2,6 +2,7 @@ import { findTestFiles } from './fileWalker';
 import { scanGoFile, GoTestDecl } from './goScanner';
 import { ScanCache } from './scanCache';
 import { Config } from '../config';
+import { skipFolders } from '../lib/settings';
 
 /** A test file and the test functions declared in it. */
 export interface DiscoveredSuite {
@@ -25,6 +26,12 @@ export interface DiscoverOptions {
 	 * read and parsed again.
 	 */
 	readonly cache?: ScanCache;
+	/**
+	 * The names of the folders that are never walked.
+	 *
+	 * The folders the user asked to skip are used when this is not given.
+	 */
+	readonly skipFolders?: string[];
 }
 
 /**
@@ -39,7 +46,7 @@ export interface DiscoverOptions {
  */
 export async function discoverTests(root: string, options?: DiscoverOptions): Promise<DiscoveredSuite[]> {
 	const files = await findTestFiles(root, {
-		skipFolders: Config.SkipFolders,
+		skipFolders: options?.skipFolders ?? skipFolders(),
 		concurrency: Config.DiscoveryConcurrency
 	});
 

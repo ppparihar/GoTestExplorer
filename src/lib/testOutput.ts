@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { runInTerminal } from './settings';
 
 /**
  * The escape sequences that set the colour of the output.
@@ -174,6 +175,143 @@ export class TestOutput {
 }
 
 /**
- * The output of the test runs.
+ * The output of the test runs, in an output channel.
+ *
+ * The channel is made when the first output is written, so the extension
+ * does not open a channel of its own when it starts.
  */
-export const testOutput = new TestOutput('Go Test Explorer');
+export class ChannelOutput {
+	private channel: vscode.OutputChannel | undefined;
+
+	/**
+	 * @param name the name of the channel.
+	 */
+	constructor(private readonly name: string = 'Go Test Explorer') { }
+
+	/**
+	 * Writes text to the channel as it is.
+	 *
+	 * @param text the text to write.
+	 */
+	write(text: string): void {
+		this.ensureChannel().append(text);
+	}
+
+	/**
+	 * Writes a line to the channel, in the colour that fits it.
+	 *
+	 * @param line the line to write.
+	 */
+	writeLine(line: string): void {
+		this.ensureChannel().appendLine(decorateLine(line));
+	}
+
+	/**
+	 * Clears the channel, so the output of the next run is not mixed with the
+	 * output of the last one.
+	 */
+	clear(): void {
+		this.ensureChannel().clear();
+	}
+
+	/**
+	 * Shows the channel.
+	 *
+	 * @param preserveFocus whether the editor keeps the focus.
+	 */
+	show(preserveFocus: boolean = true): void {
+		this.ensureChannel().show(preserveFocus);
+	}
+
+	/**
+	 * Disposes of the channel.
+	 */
+	dispose(): void {
+		if (this.channel) {
+			this.channel.dispose();
+			this.channel = undefined;
+		}
+	}
+
+	/**
+	 * The channel the output is written to.
+	 */
+	private ensureChannel(): vscode.OutputChannel {
+		if (!this.channel) {
+			this.channel = vscode.window.createOutputChannel(this.name);
+		}
+		return this.channel;
+	}
+}
+
+/**
+ * The output of the test runs.
+ *
+ * The output goes to a terminal, unless the user asked for an output channel
+ * with the `goTestExplorer.runInTerminal` setting.
+ */
+class TestOutputFacade {
+	private readonly terminal = new TestOutput('Go Test Explorer');
+	private readonly channel = new ChannelOutput('Go Test Explorer');
+
+	/**
+	 * Writes text as it is.
+	 *
+	 * @param text the text to write.
+	 */
+	write(text: string): void {
+		this.sink().write(text);
+	}
+
+	/**
+	 * Writes a line, in the colour that fits it.
+	 *
+	 * @param line the line to write.
+	 */
+	writeLine(line: string): void {
+		this.sink().writeLine(line);
+	}
+
+	/**
+	 * Clears the output, so the output of the next run is not mixed with the
+	 * output of the last one.
+	 */
+	clear(): void {
+		this.sink().clear();
+	}
+
+	/**
+	 * Shows the output.
+	 *
+	 * @param preserveFocus whether the editor keeps the focus.
+	 */
+	show(preserveFocus: boolean = true): void {
+		this.sink().show(preserveFocus);
+	}
+
+	/**
+	 * Sets what happens when the user stops the run from the terminal.
+	 *
+	 * @param handler the handler, or nothing to leave the terminal alone.
+	 */
+	setCancelHandler(handler: (() => void) | undefined): void {
+		this.terminal.setCancelHandler(handler);
+	}
+
+	/**
+	 * Disposes of the output.
+	 */
+	dispose(): void {
+		this.terminal.dispose();
+		this.channel.dispose();
+	}
+
+	/**
+	 * Where the output goes.
+	 */
+	private sink(): TestOutput | ChannelOutput {
+		return runInTerminal() ? this.terminal : this.channel;
+	}
+}
+
+export const testOutput = new TestOutputFacade();

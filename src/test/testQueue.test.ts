@@ -7,7 +7,7 @@ import { Uri } from './mocks/vscode';
 function makeConfig(name: string): TestConfig {
 	return {
 		dir: '/repo',
-		goConfig: undefined,
+		settings: { buildTags: '', testFlags: [], timeout: '30s', envFile: '', env: {} },
 		flags: [],
 		functions: [name],
 		testUri: Uri.file(`/repo/${name}.go`),
@@ -149,6 +149,34 @@ describe('TestQueue', () => {
 
 		await vi_waitFor(() => queue.pending === 0 && queue.running === 0);
 		expect(completed).toEqual(['AFTER']);
+	});
+
+	it('reads the parallelism limit again when it changes', async () => {
+		let limit = 1;
+		const started: string[] = [];
+		const queue = new TestQueue(
+			async (config) => {
+				started.push(config.testName);
+				await new Promise(r => setTimeout(r, 10));
+				return ok();
+			},
+			() => limit,
+			() => { },
+			() => { });
+
+		queue.enqueue(makeConfig('A'));
+		queue.enqueue(makeConfig('B'));
+		expect(started).toEqual(['A']);
+
+		// A limit of two now admits the work that was waiting, without
+		// waiting for A to finish.
+		limit = 2;
+		queue.enqueue(makeConfig('C'));
+
+		expect(started).toEqual(['A', 'B']);
+
+		await vi_waitFor(() => queue.pending === 0 && queue.running === 0);
+		expect(started).toEqual(['A', 'B', 'C']);
 	});
 
 	it('drops the work that has not started when it is cancelled', async () => {

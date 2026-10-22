@@ -7,12 +7,12 @@ import { Commands } from './commands';
 import { TestResult } from './testResult';
 import { RawTestResult } from './rawTestResult';
 import { TestDiscovery } from './testDiscovery';
-import { Config } from './config';
 import { TestQueue } from './runner/testQueue';
 import { scanGoSource } from './discovery/goScanner';
 import { hasFailed, PackageResult } from './exec/goTestJsonParser';
 import { findGoModule, GoModule, importPathOf } from './lib/goModule';
 import { testOutput } from './lib/testOutput';
+import { maxParallelTests, runSettings } from './lib/settings';
 
 /**
  * The files of one module, and the packages they belong to.
@@ -45,7 +45,9 @@ export class GoTestExplorer {
         const testDiscoverer = new TestDiscovery(this.commands, context);
         this.testQueue = new TestQueue(
             (testConfig) => runGoTest(testConfig),
-            Config.RunMaxParallelTest,
+            // The limit is read for every run, so a change to the setting
+            // takes effect without reloading the window.
+            () => maxParallelTests(),
             (testConfig, result) => this.onRunCompleted(testConfig, result),
             (testConfig, error) => this.onRunFailed(testConfig, error));
         vscode.window.registerTreeDataProvider('goTestExplorer', this.goTestProvider);
@@ -156,7 +158,7 @@ export class GoTestExplorer {
 
         const testConfig: TestConfig = {
             dir: group.module.root,
-            goConfig: vscode.workspace.getConfiguration('go', group.suites[0].uri),
+            settings: runSettings(group.suites[0].uri),
             flags: [],
             functions: group.suites.reduce((all, suite) => all.concat(suite.children.map(child => child.name)), [] as string[]),
             testUri: group.suites[0].uri,
@@ -171,7 +173,7 @@ export class GoTestExplorer {
         tests = tests.length > 0 ? tests : [testNode.name];
         const testConfig: TestConfig = {
             dir: path.dirname(testNode.uri.fsPath),
-            goConfig: vscode.workspace.getConfiguration('go', testNode.uri),
+            settings: runSettings(testNode.uri),
             flags: [],
             functions: tests,
             testUri: testNode.uri,

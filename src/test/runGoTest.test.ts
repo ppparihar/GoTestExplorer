@@ -5,7 +5,7 @@ import * as path from 'path';
 import cp = require('child_process');
 import { runGoTest, isToolAvailable, cancelRunningTests } from '../lib/testUtil';
 import { buildRunRegex } from '../lib/testArgs';
-import { __state, __reset, __setConfiguration, CancellationToken, CancellationTokenSource, Uri, WorkspaceConfiguration } from './mocks/vscode';
+import { __state, __reset, __setConfiguration, CancellationToken, CancellationTokenSource, Uri } from './mocks/vscode';
 
 /**
  * These tests run the real Go toolchain against a fixture, so they are
@@ -72,7 +72,7 @@ async function runFixture(functions: string[], body: string = FAILING, token?: C
 
 	return runGoTest({
 		dir: fixture,
-		goConfig: new WorkspaceConfiguration({ testTimeout: '60s', testFlags: [] }),
+		settings: { buildTags: '', testFlags: [], timeout: '60s', envFile: '', env: {} },
 		flags: [],
 		functions,
 		testUri: Uri.file(file),
@@ -86,7 +86,7 @@ async function runFixture(functions: string[], body: string = FAILING, token?: C
 async function runPackages(packages: { importPath: string; path: string }[]) {
 	return runGoTest({
 		dir: fixture,
-		goConfig: new WorkspaceConfiguration({ testTimeout: '60s', testFlags: [] }),
+		settings: { buildTags: '', testFlags: [], timeout: '60s', envFile: '', env: {} },
 		flags: [],
 		functions: [],
 		testUri: Uri.file(path.join(fixture, 'a_test.go')),
@@ -134,6 +134,14 @@ describe.skipIf(!hasGo)('runGoTest', () => {
 
 		expect(terminal.name).toBe('Go Test Explorer');
 		expect(terminal.text).toContain('boom');
+	});
+
+	it('shows the timeout that is in force', async () => {
+		await runFixture(['TestFailing']);
+
+		const terminal = __state.terminals[__state.terminals.length - 1];
+
+		expect(terminal.text).toContain('Timeout: 60s');
 	});
 
 	it('shows the terminal of the output', async () => {
