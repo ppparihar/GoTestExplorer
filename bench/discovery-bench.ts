@@ -1,44 +1,87 @@
 import * as path from 'node:path';
 import * as os from 'node:os';
-import * as vscode from 'vscode';
-import { getTestFunctions } from '../src/lib/testUtil';
+import { discoverTests } from '../src/discovery/discover';
 
 export interface DiscoveryResult {
 	files: number;
 	tests: number;
 	durationMs: number;
+	/**
+	 * The number of child processes started while discovering. Discovery must
+	 * not start any: the whole point of the in-process scanner is that the
+	 * extension works on a machine with no Go toolchain installed.
+	 */
+	spawns: number;
 }
 
 /**
- * Measures how long it takes to list the tests of every file in the fixture.
+ * Counts the child processes started by the code under test.
+ *
+ * `child_process.spawn` and `child_process.execFile` are the two ways a
+ * process is started from Node; both are wrapped so the count is exact.
+ */
+export function countSpawns(): { getCount: () => number; restore: () => void } {
+	const cp = require('child_process');
+	let count = 0;
+	const originalSpawn = cp.spawn;
+	const originalExecFile = cp.execFile;
+
+	cp.spawn = function (...args: unknown[]) {
+		count++;
+		return (originalSpawn as any).apply(cp, args);
+	};
+	cp.execFile = function (...args: unknown[]) {
+		count++;
+		return (originalExecFile as any).apply(cp, args);
+	};
+
+	return {
+		getCount: () => count,
+		restore: () => {
+			cp.spawn = originalSpawn;
+			cp.execFile = originalExecFile;
+		}
+	};
+}
+
+/**
+ * Measures how long it takes to find and scan every test file under a root.
  *
  * This is the work the extension does when the test view is refreshed, so it
  * is the number that matters for how responsive discovery feels.
  */
-export async function runDiscoveryBench(files: string[], concurrency = 8): Promise<DiscoveryResult> {
+export async function runDiscoveryBench(root: string): Promise<DiscoveryResult> {
 	const started = process.hrtime.bigint();
-	let tests = 0;
+	const counter = countSpawns();
 
-	for (let i = 0; i < files.length; i += concurrency) {
-		const batch = files.slice(i, i + concurrency);
-		const counts = await Promise.all(batch.map(file =>
-			getTestFunctions(vscode.Uri.file(file), null).then(result => result.length)));
-		tests += counts.reduce((sum: number, count: number) => sum + count, 0);
+	try {
+		const suites = await discoverTests(root);
+		const tests = suites.reduce((sum, suite) => sum + suite.declarations.length, 0);
+
+		const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
+		return { files: suites.length, tests, durationMs, spawns: counter.getCount() };
+	} finally {
+		counter.restore();
 	}
-
-	const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
-	return { files: files.length, tests, durationMs };
 }
 
 async function main(): Promise<void> {
 	const { generateFixture } = await import('./fixtures/gen');
-	const fixture = generateFixture(path.join(os.tmpdir(), 'gotestexplorer-bench-discovery'));
-	const result = await runDiscoveryBench(fixture.files);
+	const packages = Number(process.env['BENCH_PACKAGES'] || 20);
+	const testsPerPackage = Number(process.env['BENCH_TESTS_PER_PACKAGE'] || 20);
+	const filesPerPackage = Number(process.env['BENCH_FILES_PER_PACKAGE'] || 1);
+	const fixture = generateFixture(
+		path.join(os.tmpdir(), 'gotestexplorer-bench-discovery'),
+		packages,
+		testsPerPackage,
+		filesPerPackage);
+	const result = await runDiscoveryBench(fixture.root);
 	console.log(JSON.stringify({
 		bench: 'discovery',
 		...result,
 		packages: fixture.packages,
-		testsPerPackage: fixture.testsPerPackage
+		testsPerPackage: fixture.testsPerPackage,
+		filesPerPackage: fixture.filesPerPackage
 	}, null, 2));
 }
 

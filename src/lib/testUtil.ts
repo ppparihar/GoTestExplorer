@@ -2,7 +2,6 @@ import cp = require('child_process');
 import * as vscode from 'vscode';
 import fs = require('fs');
 import path = require('path');
-import { GoDocumentSymbolProvider } from './goOutline';
 import { getBinPathWithPreferredGopath, getBinPathFromEnvVar, envPath } from './goPath';
 import { getCurrentGoPath, getTestEnvVars, getToolsGopath, LineBuffer } from './utils';
 import { buildTargetArgs, resolveTestTimeout } from './testArgs';
@@ -56,17 +55,6 @@ export interface TestConfig {
 	testName: string;
 }
 
-export function getTestFunctions(uri: vscode.Uri, token: vscode.CancellationToken): Thenable<vscode.SymbolInformation[]> {
-	let documentSymbolProvider = new GoDocumentSymbolProvider();
-	return documentSymbolProvider
-		.provideDocumentSymbols(uri, token)
-		.then(symbols =>
-			symbols.filter(sym =>
-				sym.kind === vscode.SymbolKind.Function
-				&& (sym.name.startsWith('Test'))
-			)
-		);
-}
 export function getBinPath(tool: string): string {
 	return getBinPathWithPreferredGopath(tool, tool === 'go' ? [] : [getToolsGopath(), getCurrentGoPath()], vscode.workspace.getConfiguration('go', null).get('alternateTools'));
 }

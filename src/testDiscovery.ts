@@ -2,11 +2,8 @@ import * as path from "path";
 import * as fs from "fs";
 import * as vscode from "vscode";
 import { TestNode } from "./testNode";
-import { getTestFunctions, isToolAvailable } from "./lib/testUtil";
 import { Commands } from "./commands";
-import { Entry } from "./entry";
-import { FileSystemProvider } from "./fileSystemProvider";
-import { Config } from "./config";
+import { discoverTests, DiscoveredSuite } from "./discovery/discover";
 
 export class TestDiscovery {
 
@@ -19,17 +16,6 @@ export class TestDiscovery {
             .filter(folder => folder.uri.scheme === 'file');
 
         if (workspaceFolders.length === 0) {
-            this.commands.sendDiscoveredTests([]);
-            return;
-        }
-
-        if (!isToolAvailable('go-outline')) {
-            // Reporting this once, up front, is the difference between an
-            // actionable message and an empty tree with no explanation.
-            vscode.window.showErrorMessage(
-                'Cannot find "go-outline", which Go Test Explorer uses to list the tests in a file. '
-                + 'Install it with "go install github.com/ramya-rao-a/go-outline@latest" and make sure '
-                + 'its location is on your PATH, then refresh the test view.');
             this.commands.sendDiscoveredTests([]);
             return;
         }
@@ -54,52 +40,30 @@ export class TestDiscovery {
         return this.discoverTests(vscode.Uri.file(root));
     }
 
-async discoverTests(uri: vscode.Uri): Promise<TestNode[]> {
-        const items = await TestDiscovery.getGoTestFiles(uri);
-        const suites = await Promise.all(items.map(async item => {
-            let suite = new TestNode(item.name, item.uri);
-            let symbols = await getTestFunctions(suite.uri, null);
-
-            symbols = symbols.sort((a, b) => a.name.localeCompare(b.name));
-            let nodeList = symbols.map(symbol => new TestNode(`${symbol.name}`, suite.uri));
-            return new TestNode(suite.name, suite.uri, nodeList);
-        }));
-        return suites;
-    }
-
-    static async getGoTestFiles(uri: vscode.Uri): Promise<Entry[]> {
-        const fileSystemProvider = new FileSystemProvider();
-
-        const children = await fileSystemProvider.readDirectory(uri);
-        const results = this.filterGoTestFileOrDirectory(children);
-        let files = results.filter(([name, type]) => type === vscode.FileType.File)
-            .map(([name, type]) => ({ name: name, uri: vscode.Uri.file(path.join(uri.fsPath, name)), type }));
-
-        let resultfiles = TestDiscovery.filterOutSkipFolders(results);
-        if (resultfiles.length === 0) {
-            return Promise.resolve(files);
-        }
-        var promises = resultfiles.map(([name, type]) =>
-            this.getGoTestFiles(vscode.Uri.file(path.join(uri.fsPath, name))));
-
-        return Promise.all(promises).then(results => {
-            let output = results.map(r => [].concat(...r));
-            return Promise.resolve(files.concat(...output));
+    async discoverTests(uri: vscode.Uri): Promise<TestNode[]> {
+        const suites = await discoverTests(uri.fsPath);
+        return suites.map(suite => {
+            if (!suite.confident) {
+                // A file that cannot be scanned with confidence is broken Go,
+                // so it is reported rather than quietly listed with fewer
+                // tests than it declares.
+                console.warn(`go-test-explorer: ${suite.file} could not be scanned (${suite.reason}); the tests it declares may be missing.`);
+            }
+            return this.buildSuiteNode(suite);
         });
     }
 
-    private static filterOutSkipFolders(results: [string, vscode.FileType][]) {
-        return results.filter(([name, type]) => {
-            const basename = path.basename(name);
-            return type === vscode.FileType.Directory && Config.SkipFolders.indexOf(basename) === -1;
-        });
-    }
-
-    static filterGoTestFileOrDirectory(items: [string, vscode.FileType][]): [string, vscode.FileType][] {
-        return items.filter(([name, type]) => name.endsWith("_test.go")
-            && type === vscode.FileType.File
-            || type === vscode.FileType.Directory
-        );
+    /**
+     * Builds the tree node for one test file.
+     *
+     * A file with no test functions still gets a node, so that the tree
+     * shows that the file was seen and found to hold nothing runnable.
+     */
+    private buildSuiteNode(suite: DiscoveredSuite): TestNode {
+        const uri = vscode.Uri.file(suite.file);
+        const sorted = suite.declarations.slice().sort((a, b) => a.name.localeCompare(b.name));
+        const children = sorted.map(declaration => new TestNode(declaration.name, uri));
+        return new TestNode(path.basename(suite.file), uri, children);
     }
 }
 

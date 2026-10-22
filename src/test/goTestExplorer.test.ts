@@ -4,7 +4,7 @@ import { GoTestExplorer } from '../goTestExplorer';
 import { TestNode } from '../testNode';
 import { TestResult } from '../testResult';
 import { RawTestResult } from '../rawTestResult';
-import { __reset, Uri } from './mocks/vscode';
+import { __reset, __setDocumentText, __state, Uri } from './mocks/vscode';
 
 const runGoTest = vi.fn();
 
@@ -102,6 +102,62 @@ describe('GoTestExplorer', () => {
 		const alpha = results.find(r => r.testName === 'TestAlpha');
 		expect(alpha.isPassed).toBe(false);
 		expect(alpha.output.join('\n')).toContain('boom');
+	});
+});
+
+describe('GoTestExplorer go-to-location', () => {
+	let explorer: GoTestExplorer;
+	let editor: { document: { uri: vscode.Uri }; selection: vscode.Selection; revealRange: (r: vscode.Range) => void };
+
+	beforeEach(() => {
+		__reset();
+		explorer = new GoTestExplorer(fakeContext());
+		editor = {
+			document: { uri: fileUri },
+			selection: new vscode.Selection(new vscode.Position(0, 0), new vscode.Position(0, 0)),
+			revealRange: vi.fn()
+		};
+		__state.activeTextEditor = editor as never;
+	});
+
+	it('selects the name of the test in the open document', async () => {
+		__setDocumentText(fileUri.fsPath, [
+			'package pkg',
+			'',
+			'func TestAlpha(t *testing.T) {',
+			'\tt.Log("hello")',
+			'}'
+		].join('\n'));
+
+		await explorer.go(new TestNode('TestAlpha', fileUri));
+
+		expect(editor.selection.start.line).toBe(2);
+		expect(editor.selection.start.character).toBe(5);
+		expect(editor.selection.end.character).toBe(14);
+	});
+
+	it('finds a test in an unsaved edit', async () => {
+		// The document on disk still has the old name; the buffer has the new
+		// one. Go-to-location must follow the buffer.
+		__setDocumentText(fileUri.fsPath, [
+			'package pkg',
+			'',
+			'func TestRenamed(t *testing.T) {}'
+		].join('\n'));
+
+		await explorer.go(new TestNode('TestRenamed', fileUri));
+
+		expect(editor.selection.start.line).toBe(2);
+		expect(editor.selection.start.character).toBe(5);
+	});
+
+	it('warns when the test is not in the document', async () => {
+		__setDocumentText(fileUri.fsPath, 'package pkg\n\nfunc TestOther(t *testing.T) {}\n');
+
+		await explorer.go(new TestNode('TestAlpha', fileUri));
+
+		expect(__state.messages.warning.length).toBe(1);
+		expect(__state.messages.warning[0]).toContain('Could not find test');
 	});
 });
 

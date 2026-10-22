@@ -4,7 +4,6 @@ import path = require('path');
 import os = require('os');
 import cp = require('child_process');
 import { parseEnvFile, resolveHomeDir } from './goPath';
-import { NearestNeighborDict, Node } from './avlTree';
 
 export function getToolsGopath(useCache: boolean = true): string {
 	if (!useCache || !toolsGopath) {
@@ -162,31 +161,6 @@ export function promptForMissingTool(tool: string) {
  */
 export function resetMissingToolWarnings(): void {
 	warnedTools.clear();
-}
-export function getFileArchive(document: vscode.TextDocument): string {
-	let fileContents = document.getText();
-	return document.fileName + '\n' + Buffer.byteLength(fileContents, 'utf8') + '\n' + fileContents;
-}
-
-export function makeMemoizedByteOffsetConverter(buffer: Buffer): (byteOffset: number) => number {
-	let defaultValue = new Node<number, number>(0, 0); // 0 bytes will always be 0 characters
-	let memo = new NearestNeighborDict(defaultValue, NearestNeighborDict.NUMERIC_DISTANCE_FUNCTION);
-	return (byteOffset: number) => {
-		let nearest = memo.getNearest(byteOffset);
-		let byteDelta = byteOffset - nearest.key;
-
-		if (byteDelta === 0)
-			return nearest.value;
-
-		let charDelta: number;
-		if (byteDelta > 0)
-			charDelta = buffer.toString('utf8', nearest.key, byteOffset).length;
-		else
-			charDelta = -buffer.toString('utf8', byteOffset, nearest.key).length;
-
-		memo.insert(byteOffset, nearest.value + charDelta);
-		return nearest.value + charDelta;
-	};
 }
 export class LineBuffer {
 	private buf: string = '';

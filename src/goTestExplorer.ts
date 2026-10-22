@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { GoTestProvider } from './goTestProvider';
-import { runGoTest, getTestFunctions, TestConfig } from './lib/testUtil';
+import { runGoTest, TestConfig } from './lib/testUtil';
 import { TestNode } from './testNode';
 import { Commands } from './commands';
 import { TestResult } from './testResult';
@@ -9,6 +9,7 @@ import { RawTestResult } from './rawTestResult';
 import { TestDiscovery } from './testDiscovery';
 import { Config } from './config';
 import { TestQueue } from './runner/testQueue';
+import { scanGoSource } from './discovery/goScanner';
 
 export class GoTestExplorer {
 
@@ -114,53 +115,32 @@ export class GoTestExplorer {
         this.commands.sendTestCompleted();
     }
 
+    /**
+     * Opens the file that declares a test and selects its name.
+     *
+     * The open document is read rather than the file on disk, so a test that
+     * has been edited but not saved is still found where the user expects it.
+     */
     public async go(testNode: TestNode): Promise<void> {
-
-        const symbols = await getTestFunctions(testNode.uri, null);
-
         try {
-            const symbol = this.findTestLocation(symbols, testNode);
+            const document = await vscode.workspace.openTextDocument(testNode.uri);
+            const scan = scanGoSource(document.getText());
+            const declaration = scan.declarations.find(d => d.name === testNode.name);
 
-            const doc = await vscode.workspace.openTextDocument(testNode.uri);//.then((doc) => {
-            // const byteOffsetToDocumentOffset = makeMemoizedByteOffsetConverter(new Buffer(doc.getText()));
-            // let start =byteOffsetToDocumentOffset(998 - 1);
-            // let end = byteOffsetToDocumentOffset(1057 - 1);
+            if (!declaration) {
+                throw new Error("Could not find test (no symbols matching)");
+            }
 
-
-            await vscode.window.showTextDocument(doc);//.then((editor) => {
-            // const loc = new vscode.Range(doc.positionAt(start), doc.positionAt(end));
-            const loc = symbol.location.range;
-            const selection = new vscode.Selection(loc.start.line, loc.start.character, loc.end.line, loc.end.character);
+            await vscode.window.showTextDocument(document);
+            const selection = new vscode.Selection(
+                new vscode.Position(declaration.line, declaration.startChar),
+                new vscode.Position(declaration.line, declaration.endChar));
             vscode.window.activeTextEditor.selection = selection;
             vscode.window.activeTextEditor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
-
         } catch (r) {
-
             vscode.window.showWarningMessage(r instanceof Error ? r.message : String(r));
         }
-
-
-    }
-
-    public findTestLocation(symbols: vscode.SymbolInformation[], testNode: TestNode): vscode.SymbolInformation {
-
-        if (symbols.length === 0) {
-            throw new Error("Could not find test (no symbols found)");
-        }
-
-        const testName = testNode.name;
-
-        symbols = symbols.filter((s) => s.kind === vscode.SymbolKind.Function && s.name === testName);
-
-        if (symbols.length === 0) {
-            throw Error("Could not find test (no symbols matching)");
-        }
-
-        if (symbols.length > 1) {
-            throw Error("Could not find test (found multiple matching symbols)");
-        }
-
-        return symbols[0];
     }
 
 }
+

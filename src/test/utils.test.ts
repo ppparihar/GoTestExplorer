@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { getToolsEnvVars, getTestEnvVars, getCurrentGoPath, promptForMissingTool, resetMissingToolWarnings } from '../lib/utils';
-import { __configCalls, __reset, __setConfiguration, __state, Uri } from './mocks/vscode';
+import { __configCalls, __reset, __setConfiguration, __state, Position, Selection, Uri } from './mocks/vscode';
 
 const activeUri = Uri.file('/repo/active.go');
 const testUri = Uri.file('/repo/pkg/alpha_test.go');
@@ -8,7 +8,11 @@ const testUri = Uri.file('/repo/pkg/alpha_test.go');
 beforeEach(() => {
 	__reset();
 	resetMissingToolWarnings();
-	__state.activeTextEditor = { document: { uri: activeUri } };
+	__state.activeTextEditor = {
+		document: { uri: activeUri },
+		selection: new Selection(new Position(0, 0), new Position(0, 0)),
+		revealRange: () => { }
+	};
 	__setConfiguration('go', (resource?: Uri) => {
 		if (resource && resource.fsPath === testUri.fsPath) {
 			return {

@@ -7,18 +7,6 @@ import { TestNode } from '../testNode';
 import { Commands } from '../commands';
 import { __state, __reset, Uri } from './mocks/vscode';
 
-const getTestFunctions = vi.fn();
-const isToolAvailable = vi.fn();
-
-vi.mock('../lib/testUtil', async importOriginal => {
-	const actual = await importOriginal<typeof import('../lib/testUtil')>();
-	return {
-		...actual,
-		getTestFunctions: (...args: unknown[]) => getTestFunctions(...args),
-		isToolAvailable: (...args: unknown[]) => isToolAvailable(...args)
-	};
-});
-
 class FakeCommands {
 	discoveryStarted = 0;
 	discovered: TestNode[][] = [];
@@ -40,9 +28,9 @@ function makeTempDir(): string {
 	return dir;
 }
 
-function writeTestFile(dir: string, name: string): string {
+function writeTestFile(dir: string, name: string, body: string = 'func TestAlpha(t *testing.T) {}'): string {
 	const file = path.join(dir, name);
-	fs.writeFileSync(file, 'package x\n\nfunc TestAlpha(t *testing.T) {}\n');
+	fs.writeFileSync(file, `package x\n\n${body}\n`);
 	return file;
 }
 
@@ -52,12 +40,6 @@ function fakeCommands(): FakeCommands {
 
 beforeEach(() => {
 	__reset();
-	getTestFunctions.mockReset();
-	isToolAvailable.mockReset();
-	isToolAvailable.mockReturnValue(true);
-	getTestFunctions.mockResolvedValue([
-		{ name: 'TestAlpha', kind: 11, location: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } }
-	]);
 });
 
 afterEach(() => {
@@ -124,26 +106,77 @@ describe('TestDiscovery.discoverAllTests', () => {
 		expect(commands.discovered[0].map(n => n.name)).toEqual(['alpha_test.go']);
 	});
 
-	it('reports a missing go-outline once, with an actionable message', async () => {
+	it('discovers the test names in a file', async () => {
 		const folder = makeTempDir();
-		writeTestFile(folder, 'alpha_test.go');
-		writeTestFile(folder, 'beta_test.go');
-		writeTestFile(folder, 'gamma_test.go');
+		writeTestFile(folder, 'alpha_test.go', [
+			'func TestAlpha(t *testing.T) {}',
+			'func TestBeta(t *testing.T) {}'
+		].join('\n'));
 		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
-
-		isToolAvailable.mockReturnValue(false);
 
 		const commands = fakeCommands();
 		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
 
 		await waitFor(() => commands.discovered.length > 0);
 
-		// One message for the whole refresh, not one per file.
-		expect(__state.messages.error.length).toBe(1);
-		expect(__state.messages.error[0]).toContain('go-outline');
-		expect(__state.messages.error[0]).toContain('go install');
-		expect(commands.discovered[0]).toEqual([]);
-		expect(getTestFunctions).not.toHaveBeenCalled();
+		const suite = commands.discovered[0][0];
+		expect(suite.name).toBe('alpha_test.go');
+		expect(suite.children.map(c => c.name)).toEqual(['TestAlpha', 'TestBeta']);
+	});
+
+	it('discovers tests without any external tool installed', async () => {
+		const folder = makeTempDir();
+		writeTestFile(folder, 'alpha_test.go');
+		writeTestFile(folder, 'beta_test.go');
+		writeTestFile(folder, 'gamma_test.go');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+
+		await waitFor(() => commands.discovered.length > 0);
+
+		// Discovery is entirely in-process, so it neither needs a Go
+		// toolchain nor complains about a missing one.
+		expect(__state.messages.error).toEqual([]);
+		expect(commands.discovered[0].length).toBe(3);
+	});
+
+	it('ignores files that are not Go test files', async () => {
+		const folder = makeTempDir();
+		writeTestFile(folder, 'alpha_test.go');
+		writeTestFile(folder, 'helper.go');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const commands = fakeCommands();
+		new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+
+		await waitFor(() => commands.discovered.length > 0);
+		expect(commands.discovered[0].map(n => n.name)).toEqual(['alpha_test.go']);
+	});
+
+	it('reports a file it could not scan with confidence', async () => {
+		const folder = makeTempDir();
+		// An unterminated string is not valid Go, so the file cannot be
+		// scanned with confidence and may hold tests the scan missed.
+		writeTestFile(folder, 'broken_test.go', 'const s = "unterminated');
+		__state.workspaceFolders = [{ uri: Uri.file(folder), name: 'a', index: 0 }];
+
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => { });
+
+		try {
+			const commands = fakeCommands();
+			new TestDiscovery(commands as unknown as Commands).discoverAllTests();
+
+			await waitFor(() => commands.discovered.length > 0);
+
+			expect(commands.discovered[0].map(n => n.name)).toEqual(['broken_test.go']);
+			expect(warn).toHaveBeenCalled();
+			expect(warn.mock.calls[0][0]).toContain('broken_test.go');
+			expect(warn.mock.calls[0][0]).toContain('unterminated string literal');
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });
 

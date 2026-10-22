@@ -1,28 +1,31 @@
 {
-  "timestamp": "2026-10-22T06:36:35.243Z",
+  "timestamp": "2026-10-22T06:53:02.046Z",
   "packages": 20,
   "testsPerPackage": 20,
+  "filesPerPackage": 1,
   "discovery": {
     "cold": {
       "files": 20,
       "tests": 400,
-      "durationMs": 21.0135
+      "durationMs": 4.112375,
+      "spawns": 0
     },
     "warm": {
       "files": 20,
       "tests": 400,
-      "durationMs": 11.655875
+      "durationMs": 1.181959,
+      "spawns": 0
     }
   },
   "exec": {
     "cold": {
       "packages": 20,
-      "durationMs": 179.256166,
+      "durationMs": 181.255917,
       "exitCode": 0
     },
     "warm": {
       "packages": 20,
-      "durationMs": 80.527292,
+      "durationMs": 79.594416,
       "exitCode": 0
     }
   }

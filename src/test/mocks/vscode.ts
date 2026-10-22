@@ -228,10 +228,19 @@ export class ConfigurationCallLog {
 
 export const __configCalls = new ConfigurationCallLog();
 
+/**
+ * A stand-in for a text editor.
+ */
+export interface MockTextEditor {
+	document: { uri: Uri };
+	selection: Selection;
+	revealRange(range: Range, type?: TextEditorRevealType): void;
+}
+
 export const __state = {
 	workspaceFolders: undefined as WorkspaceFolder[] | undefined,
 	rootPath: undefined as string | undefined,
-	activeTextEditor: undefined as { document: { uri: Uri } } | undefined,
+	activeTextEditor: undefined as MockTextEditor | undefined,
 	configurationValues: {} as Record<string, Record<string, unknown> | ((resource?: Uri) => Record<string, unknown>)>,
 	messages: {
 		info: [] as string[],
@@ -239,7 +248,11 @@ export const __state = {
 		error: [] as string[]
 	},
 	registeredCommands: new Map<string, (...args: unknown[]) => unknown>(),
-	openedDocuments: [] as Uri[]
+	openedDocuments: [] as Uri[],
+	/**
+	 * The contents of the documents the mock hands out, keyed by path.
+	 */
+	documentTexts: new Map<string, string>()
 };
 
 /**
@@ -255,7 +268,15 @@ export function __reset(): void {
 	__state.messages.error = [];
 	__state.registeredCommands.clear();
 	__state.openedDocuments = [];
+	__state.documentTexts.clear();
 	__configCalls.reset();
+}
+
+/**
+ * Sets the text the mock returns for a document.
+ */
+export function __setDocumentText(path: string, text: string): void {
+	__state.documentTexts.set(path, text);
 }
 
 /**
@@ -284,7 +305,7 @@ export const workspace = {
 	openTextDocument(uri: Uri): Promise<{ getText(): string; uri: Uri; fileName: string; positionAt(o: number): Position }> {
 		__state.openedDocuments.push(uri);
 		return Promise.resolve({
-			getText: () => '',
+			getText: () => __state.documentTexts.get(uri.fsPath) ?? '',
 			uri,
 			fileName: uri.fsPath,
 			positionAt: (offset: number) => new Position(0, offset)
@@ -299,7 +320,7 @@ export const workspace = {
 };
 
 export const window = {
-	get activeTextEditor(): { document: { uri: Uri } } | undefined {
+	get activeTextEditor(): MockTextEditor | undefined {
 		return __state.activeTextEditor;
 	},
 	showInformationMessage(message: string): Promise<undefined> {

@@ -26,6 +26,12 @@ Every finding below was confirmed by reading the code and reproducing the behavi
 
 ### 2.1 Correctness
 
+The `Location` column records where each finding was when it was made. Some of
+those files have since been deleted (Phase 2 removed `src/lib/goOutline.ts`,
+`src/lib/avlTree.ts`, `src/fileSystemProvider.ts` and `src/entry.ts`), so a
+location that points at a deleted file is a record of the past, not a place to
+look now.
+
 | # | Finding | Location | Evidence |
 |---|---|---|---|
 | C1 | `-run` regex is mis-anchored. `util.format('^%s$', fns.join('\|'))` yields `^A\|B$`, which parses as `(^A)\|(B$)`. Running a suite therefore also runs `TestAlphaExtra` when the suite only asked for `TestAlpha`. | `src/lib/testUtil.ts:262` | Reproduced: `go test -run '^TestAlpha\|TestGamma$'` executed `TestAlphaExtra`; the correct form `^(A\|B)$` did not. |
@@ -118,9 +124,9 @@ Each phase is independently shippable and independently verifiable.
 
 | Phase | Status | Evidence |
 |---|---|---|
-| Phase 0 — Baseline and test harness | Done | `npm test` runs 61 assertions across 7 files; `npm run bench` writes `bench/results/baseline.json` |
+| Phase 0 — Baseline and test harness | Done | `npm test` runs 115 assertions across 9 files; `npm run bench` writes `bench/results/baseline.json` |
 | Phase 1 — Correctness fixes | Done | C1–C12 applied; each fix has a regression test in `src/test/` |
-| Phase 2 — Discovery performance | Not started | — |
+| Phase 2 — Discovery performance | 2a, 2b, 2d done; 2c open | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0 |
 | Phase 3 — Execution performance | Not started | — |
 | Phase 4 — Toolchain and delivery | Partially done | TypeScript 5, `@types/vscode` 1.85, Vitest, `tsx` landed as Phase 0 prerequisites; the rest of Phase 4 is still open |
 | Phase 5 — Native Testing API | Not started | Deferred |
@@ -133,6 +139,17 @@ own modules, and downloading an extension host per run is not needed for that.
 The bench harness resolves `vscode` through `bench/tsconfig.runtime.json`
 (`paths` mapping) rather than a runtime resolver patch.
 
+**Phase 2 deviations.** 2b was implemented as a **filesystem walk only**; the
+`go list -json ./...` variant was rejected because it spawns a process, which
+is exactly what Phase 2 exists to remove, and because it silently drops test
+files that a build tag excludes, which would make the tree disagree with what
+`go test` runs. The consequence is that discovery lists a *superset* of the
+files the toolchain will build: a `_test.go` file behind a build tag shows up
+in the tree and `go test` reports no tests for it. The planned
+`go test -list` fallback for low-confidence scans was dropped for the same
+reason — it spawns a process. Instead the scanner reports its confidence and
+discovery logs the files it could not parse.
+
 **Baseline recorded on 2026-10-22** (20 packages x 20 tests, macOS/arm64,
 Node 24.14.0, Go 1.27.1). The full record is `bench/results/baseline.json`.
 
@@ -144,6 +161,23 @@ Node 24.14.0, Go 1.27.1). The full record is `bench/results/baseline.json`.
 "First run" is the first measurement in a process; "warm" is the second. The
 `go` build cache was already populated, so the "first run" figure excludes the
 cost of compiling the fixture from scratch.
+
+**Phase 2 measured on 2026-10-22** (same machine, same fixture generator).
+The Phase 0 column is the `go-outline` path measured by spawning one
+`go-outline -f <file>` per test file at concurrency 8 — the cost model the
+extension had before Phase 2.
+
+| Measurement | Phase 0 | Phase 2 | Change |
+|---|---|---|---|
+| Discovery, 20 files / 400 tests (first run) | 21 ms | 4.1 ms | 5.1× faster |
+| Discovery, 20 files / 400 tests (warm) | 12 ms | 1.2 ms | 9.9× faster |
+| Discovery, 500 files / 10,000 tests | 246 ms | 15 ms | **16× faster** |
+| Child processes spawned, 500 files | 500 | **0** | — |
+| Tests found, 500 files | 10,000 | 10,000 | same |
+| `go test ./...` (20 packages, warm) | 81 ms | 80 ms | unchanged |
+
+Both paths find the same 10,000 tests in the 500-file fixture, so the speed-up
+is not bought by finding fewer of them.
 
 ---
 
@@ -197,44 +231,51 @@ Also add a `go` binary preflight in `activate()` so a missing toolchain fails lo
 
 ### Phase 2 — Discovery performance *(the big one)*
 
-**2a. In-process Go source scanner** — new `src/discovery/goScanner.ts`
+**2a. In-process Go source scanner** — `src/discovery/goScanner.ts` — **Done**
 
-Replace `getTestFunctions`/`go-outline` with a scanner that reads the file once and finds top-level `func TestXxx(...)` declarations, returning `{ name, line, startChar, endChar }`.
+Replaces `getTestFunctions`/`go-outline` with a scanner that reads the file once and finds top-level `func TestXxx(...)` declarations, returning `{ name, line, startChar, endChar, usesTesting }`.
 
-It must correctly skip:
+It correctly skips:
 - line comments `//` and block comments `/* ... */`
 - interpreted strings `"..."` with escapes
 - raw strings `` `...` ``
+- rune literals `'{'`
 - method receivers (`func (t *T) TestX()` → not a test)
+- nested declarations and function literals
+- generic functions (`func TestXxx[T any](t *testing.T)`)
 
 Rationale for a scanner over `go list`/`go test -list`: `go test -list` requires building the test binary (slow first run, though the Go build cache amortises it) and gives only names, not positions. `go-outline` requires an external binary. The scanner needs no toolchain at all and gives exact source positions for go-to-location.
 
 > **Risk:** a hand-rolled scanner can mis-parse exotic Go. Mitigation: a fixture corpus of tricky Go files (generics, raw strings containing `func Test`, comments with braces, build tags, cgo) with golden-output unit tests; plus a **fallback** to `go test -list` when the scanner's confidence is low.
 
-**2b. Package discovery** — `go list -json ./...` with an FS-walk fallback
+**Done, with the fallback dropped.** `src/test/goScanner.test.ts` holds 34 cases over the tricky-Go corpus, including a name inside a comment, a name inside an interpreted string, a name inside a raw string, a name inside a struct tag, a method with a receiver, a nested declaration, a function literal, a generic function, a multi-line parameter list, and an escaped rune literal. The scanner reports `confident: false` with a reason for an unterminated literal, an unterminated block comment, or unbalanced braces; discovery logs those files instead of failing the refresh. The planned `go test -list` fallback was dropped because it spawns a process — see the Phase 2 deviations above.
+
+**2b. Package discovery** — `src/discovery/fileWalker.ts` — **Done (FS walk only)**
 
 - `go list -json ./...` respects modules, `go.work`, build tags, and skips `vendor`/`testdata` automatically.
 - Fallback: recursive `fs.readdir(dir, {withFileTypes: true})` — one syscall per directory, replacing the N+1 `fs.stat` loop in `src/fileSystemProvider.ts:194-205`.
 
-**2c. Concurrency + skip list + cache + watcher**
+**Done as the FS walk only.** `findTestFiles()` walks the tree with `readdir({withFileTypes: true})`, skipping `Config.SkipFolders` by name at any depth, following symlinked directories while tracking real paths so a symlink cycle cannot loop forever, and ignoring broken symlinks. A symlinked directory keeps the path under the workspace, so the file the user opens is the one the tree shows. `go list` was not used: it spawns a process, and it drops test files that a build tag excludes, which would make the tree disagree with what `go test` runs.
 
-- Bound discovery concurrency to 16 (configurable).
-- Expand `Config.SkipFolders` (`src/config.ts:3`): `vendor, .vscode, .git, .idea, node_modules, testdata, dist, build, out, third_party, proto, generated, __pycache__, .venv, coverage`.
-- Cache scan results by `(path, mtime, size)`; re-scan only changed files.
-- `vscode.workspace.createFileSystemWatcher('**/*_test.go')` → incremental add/remove instead of full rediscovery.
+**2c. Concurrency + skip list + cache + watcher** — **Partly done**
 
-**2d. Retire the dead scaffolding**
+- Bound discovery concurrency to 16 (configurable). **Done** — `Config.DiscoveryConcurrency`, applied to both the directory walk and the file scans.
+- Expand `Config.SkipFolders` (`src/config.ts:3`): `vendor, .vscode, .git, .idea, node_modules, testdata, dist, build, out, third_party, proto, generated, __pycache__, .venv, coverage`. **Done**.
+- Cache scan results by `(path, mtime, size)`; re-scan only changed files. **Open.**
+- `vscode.workspace.createFileSystemWatcher('**/*_test.go')` → incremental add/remove instead of full rediscovery. **Open.**
 
-- Delete `src/fileSystemProvider.ts` (write/delete/rename/watch paths unused; the provider is never registered).
-- Delete `src/lib/avlTree.ts` (262 lines) once the scanner returns line/char offsets.
-- Delete `src/lib/goOutline.ts` (the `go-outline` integration).
-- Drop the `mkdirp` and `rimraf` dependencies.
-- De-duplicate `getToolsGopath` / `resolveHomeDir` / `stripBOM` across `src/lib/utils.ts` and `src/lib/goPath.ts`.
+**2d. Retire the dead scaffolding** — **Done**
+
+- Delete `src/fileSystemProvider.ts` (write/delete/rename/watch paths unused; the provider is never registered). **Done.**
+- Delete `src/lib/avlTree.ts` (262 lines) once the scanner returns line/char offsets. **Done.**
+- Delete `src/lib/goOutline.ts` (the `go-outline` integration). **Done.**
+- Drop the `mkdirp` and `rimraf` dependencies. **Done.**
+- De-duplicate `getToolsGopath` / `resolveHomeDir` / `stripBOM` across `src/lib/utils.ts` and `src/lib/goPath.ts`. **Open** — the duplicate helpers are still there; only the ones that existed for `go-outline` (`makeMemoizedByteOffsetConverter`, `getFileArchive`, `getTestFunctions`, `Entry`) were removed.
 
 **Exit criteria:**
-- Discovery on the 500-file fixture: **no child processes spawned**, and wall time under the Phase 0 baseline by a measured margin (target: ≥10× faster; the baseline number goes in the plan's appendix).
-- `go-outline` uninstalled → discovery still works fully.
-- Editing a `_test.go` file updates the tree within ~1s without a manual Refresh.
+- Discovery on the 500-file fixture: **no child processes spawned**, and wall time under the Phase 0 baseline by a measured margin (target: ≥10× faster; the baseline number goes in the plan's appendix). **Met** — 0 spawns, 246 ms → 15 ms, 16× faster.
+- `go-outline` uninstalled → discovery still works fully. **Met** — the binary is no longer used by any code path; `src/test/testDiscovery.test.ts` proves discovery works with no external tool, and `npm run bench` no longer requires `go-outline` on `PATH`.
+- Editing a `_test.go` file updates the tree within ~1s without a manual Refresh. **Open** — depends on 2c's file watcher.
 
 **Effort:** ~4 days.
 
@@ -341,7 +382,7 @@ VS Code's built-in Testing API (`vscode.TestController`, VS Code ≥ 1.59) repla
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| The Go scanner mis-parses exotic Go source | Medium | Fixture corpus with golden outputs; confidence heuristic; `go test -list` fallback; a "rescan with fallback" setting |
+| The Go scanner mis-parses exotic Go source | Medium | 34-case tricky-Go corpus with golden outputs; the scanner reports low confidence for input it cannot lex, and discovery logs the file instead of silently listing fewer tests. A build-tagged test file is a *superset* case, not a mis-parse: the file is listed and `go test` reports no tests for it |
 | `go test -json` output shape changes across Go versions | Low | The event schema has been stable since Go 1.10; pin a minimum Go version; parse defensively and fall back to the legacy path on unparseable input |
 | The native Testing API migration regresses UX | Medium | Deferred to Phase 5, behind a setting, after 0–4 have shipped and stabilised |
 | Modernising TypeScript surfaces many latent type errors | High | `strict` in staged steps: `strictNullChecks` first, then `strict`; the codebase is small (~1.9k lines) |
