@@ -124,10 +124,10 @@ Each phase is independently shippable and independently verifiable.
 
 | Phase | Status | Evidence |
 |---|---|---|
-| Phase 0 — Baseline and test harness | Done | `npm test` runs 242 assertions across 16 files; `npm run bench` writes `bench/results/baseline.json` |
+| Phase 0 — Baseline and test harness | Done | `npm test` runs 289 assertions across 17 files; `npm run bench` writes `bench/results/baseline.json` |
 | Phase 1 — Correctness fixes | Done | C1–C12 applied; each fix has a regression test in `src/test/` |
 | Phase 2 — Discovery performance | Done | `go-outline` removed; discovery is in-process; 500-file fixture: 246 ms → 15 ms, 500 spawns → 0; a refresh over a warm cache costs 3.6 ms and a saved file reaches the tree without a manual refresh |
-| Phase 3 — Execution performance | In progress | 3a–3g done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, the tree is redrawn once per run instead of once per test, a run can be cancelled — the whole process tree included — "Run All" tests every package of a module in one process, the output of a run goes to a terminal that can stop it with Ctrl+C, and every knob is a setting that falls back to the Go extension's |
+| Phase 3 — Execution performance | Done | 3a–3g done: the run is parsed from the `go test -json` event stream, the `-run` anchoring is proven against the real toolchain, the tree is redrawn once per run instead of once per test, a run can be cancelled — the whole process tree included — "Run All" tests every package of a module in one process, the output of a run goes to a terminal that can stop it with Ctrl+C, and every knob is a setting that falls back to the Go extension's |
 | Phase 4 — Toolchain and delivery | Partially done | TypeScript 5, `@types/vscode` 1.85, Vitest, `tsx` landed as Phase 0 prerequisites; the rest of Phase 4 is still open |
 | Phase 5 — Native Testing API | Not started | Deferred |
 | Phase 6 — Feature parity | Not started | Deferred |
