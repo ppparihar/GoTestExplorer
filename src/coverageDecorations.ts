@@ -31,6 +31,7 @@ export class CoverageDecorations implements vscode.Disposable {
   private readonly saveSubscription: vscode.Disposable;
   private enabled = false;
   private _complete = false;
+  private busy = false;
   private readonly changed = new vscode.EventEmitter<void>();
   /**
    * What is known about the coverage changed.
@@ -58,6 +59,17 @@ export class CoverageDecorations implements vscode.Disposable {
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     this.render();
+  }
+
+  /**
+   * Tells whether tests are running, so that the figure can show that it is
+   * about to change.
+   */
+  setBusy(busy: boolean): void {
+    if (this.busy !== busy) {
+      this.busy = busy;
+      this.render();
+    }
   }
 
   /**
@@ -167,10 +179,12 @@ export class CoverageDecorations implements vscode.Disposable {
       this.statusItem.hide();
       return;
     }
+    // The icon of the status bar spins while tests are running.
+    const icon = this.busy ? '$(sync~spin)' : '$(shield)';
     this.statusItem.text =
       percent === undefined
-        ? '$(shield) Coverage: run tests to see it'
-        : `$(shield) Coverage ${percent.toFixed(1)}%${this._complete ? '' : ' (partial)'}`;
+        ? `${icon} Coverage: ${this.busy ? 'running tests' : 'run tests to see it'}`
+        : `${icon} Coverage ${percent.toFixed(1)}%${this._complete ? '' : ' (partial)'}`;
     this.statusItem.tooltip =
       'Code coverage of the last test runs. Green lines ran, red lines did not. "Partial" means Run All has not covered every file yet. Click for the files.';
     this.statusItem.show();

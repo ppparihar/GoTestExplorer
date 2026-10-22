@@ -36,6 +36,14 @@ interface ModuleGroup {
   suites: TestNode[];
 }
 
+/**
+ * The frames of the spinner that shows in the header of the view while tests
+ * are running. The header is text, which cannot hold the animated icon of the
+ * tree, so the frames are drawn one after the other.
+ */
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const SPINNER_INTERVAL = 100;
+
 const STATUS_LABELS: Record<TestStatus, string> = {
   failed: 'failed',
   passed: 'passed',
@@ -50,6 +58,8 @@ export class GoTestExplorer {
    * Whether the runs measure what the tests cover.
    */
   private coverageEnabled = false;
+  private spinnerTimer: ReturnType<typeof setInterval> | undefined;
+  private spinnerFrame = 0;
   private filterMessage: string | undefined;
 
   readonly commands: Commands;
@@ -74,8 +84,20 @@ export class GoTestExplorer {
       // The limit is read for every run, so a change to the setting
       // takes effect without reloading the window.
       () => maxParallelTests(),
-      (testConfig, result) => this.onRunCompleted(testConfig, result),
-      (testConfig, error) => this.onRunFailed(testConfig, error),
+      (testConfig, result) => {
+        try {
+          this.onRunCompleted(testConfig, result);
+        } finally {
+          this.updateCoverageBusy();
+        }
+      },
+      (testConfig, error) => {
+        try {
+          this.onRunFailed(testConfig, error);
+        } finally {
+          this.updateCoverageBusy();
+        }
+      },
     );
     this.treeView = vscode.window.createTreeView('goTestExplorer', {
       treeDataProvider: this.goTestProvider,
@@ -135,6 +157,7 @@ export class GoTestExplorer {
       // that are running are killed.
       this.cancellations++;
       this.testQueue.cancel();
+      this.updateCoverageBusy();
       const stopped = cancelRunningTests();
       if (stopped === 0) {
         vscode.window.showInformationMessage('No test run is in progress.');
@@ -177,6 +200,7 @@ export class GoTestExplorer {
     }
     this.coverage.setEnabled(enabled);
     this.updateMessage();
+    this.updateCoverageBusy();
     this.showCoverageSummary();
     vscode.commands.executeCommand('setContext', 'goTestExplorer.coverageEnabled', enabled);
   }
@@ -186,18 +210,42 @@ export class GoTestExplorer {
    * place while the list of tests is scrolled.
    */
   private showCoverageSummary() {
+    this.showCoverageHeader();
+    // The rows of the files show their own coverage, so they are drawn again.
+    this.goTestProvider.fileCoverage = (suite) => this.coverageOfTestFile(suite);
+  }
+
+  private showCoverageHeader() {
     const percent = this.coverage.percent;
+    // The spinner tells that the figure is about to change.
+    const spinner = this.spinnerTimer ? SPINNER_FRAMES[this.spinnerFrame] + ' ' : '';
     if (!this.coverageEnabled) {
       this.treeView.description = undefined;
     } else if (percent === undefined) {
-      this.treeView.description = 'Coverage: run tests';
+      this.treeView.description = `${spinner}Coverage: ${spinner ? 'running tests' : 'run tests'}`;
     } else {
       // Only a run of everything gives the figure of the project. Until then
       // it is the figure of the files that were run, and it says so.
-      this.treeView.description = `Coverage ${percent.toFixed(1)}%${this.coverage.complete ? '' : ' (partial)'}`;
+      this.treeView.description = `${spinner}Coverage ${percent.toFixed(1)}%${this.coverage.complete ? '' : ' (partial)'}`;
     }
-    // The rows of the files show their own coverage, so they are drawn again.
-    this.goTestProvider.fileCoverage = (suite) => this.coverageOfTestFile(suite);
+  }
+
+  /**
+   * Starts or stops the spinner of the coverage, by whether tests are running.
+   */
+  private updateCoverageBusy() {
+    const busy = this.coverageEnabled && this.testQueue.running + this.testQueue.pending > 0;
+    if (busy && !this.spinnerTimer) {
+      this.spinnerTimer = setInterval(() => {
+        this.spinnerFrame = (this.spinnerFrame + 1) % SPINNER_FRAMES.length;
+        this.showCoverageHeader();
+      }, SPINNER_INTERVAL);
+    } else if (!busy && this.spinnerTimer) {
+      clearInterval(this.spinnerTimer);
+      this.spinnerTimer = undefined;
+    }
+    this.coverage.setBusy(busy);
+    this.showCoverageHeader();
   }
 
   /**
@@ -592,6 +640,7 @@ export class GoTestExplorer {
   private enqueueTest(testConfig: TestConfig) {
     this.watchTests(testConfig);
     this.testQueue.enqueue(testConfig);
+    this.updateCoverageBusy();
   }
 
   /**

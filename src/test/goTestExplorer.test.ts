@@ -451,6 +451,35 @@ describe('GoTestExplorer runs a whole module', () => {
       expect(header().description).toBeUndefined();
     });
 
+    it('shows a spinner by the coverage while tests are running', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      const header = () => (explorer as unknown as { treeView: { description?: string } }).treeView;
+      const spinner = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] /;
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      expect(header().description).not.toMatch(spinner);
+
+      let finish: (result: RawTestResult) => void = () => {};
+      runGoTest.mockImplementation(
+        () => new Promise<RawTestResult>((resolve) => (finish = resolve)),
+      );
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+
+      // While the run is going the header spins, and so does the status bar.
+      expect(header().description).toMatch(spinner);
+      expect(__state.statusItems[0].text).toContain('sync~spin');
+      const first = header().description;
+      await waitFor(() => header().description !== first);
+      expect(header().description).toMatch(spinner);
+
+      finish(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await waitFor(() => completed.length > 0);
+
+      // When it has finished the figure is shown without the spinner.
+      expect(header().description).toBe('Coverage 50.0% (partial)');
+      expect(__state.statusItems[0].text).not.toContain('sync~spin');
+    });
+
     it('lists the covered files, the least covered first, and opens the one picked', async () => {
       const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
       explorer.commands.sendDiscoveredTests([a]);
