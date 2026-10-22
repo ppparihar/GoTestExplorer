@@ -422,6 +422,23 @@ describe('GoTestExplorer runs a whole module', () => {
       expect(__state.statusItems[0].visible).toBe(true);
     });
 
+    it('shows the coverage above the list of tests', async () => {
+      const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
+      explorer.commands.sendDiscoveredTests([a]);
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      expect((await explorer.goTestProvider.getChildren())[0].name).toBe(
+        'Coverage: run tests to see it',
+      );
+
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => completed.length > 0);
+      expect((await explorer.goTestProvider.getChildren())[0].name).toBe('Coverage 50.0% (1 file)');
+
+      await vscode.commands.executeCommand('goTestExplorer.hideCoverage');
+      expect((await explorer.goTestProvider.getChildren())[0]).toBe(a);
+    });
+
     it('lists the covered files, the least covered first, and opens the one picked', async () => {
       const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
       explorer.commands.sendDiscoveredTests([a]);

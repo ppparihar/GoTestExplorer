@@ -174,7 +174,24 @@ export class GoTestExplorer {
     }
     this.coverage.setEnabled(enabled);
     this.updateMessage();
+    this.showCoverageSummary();
     vscode.commands.executeCommand('setContext', 'goTestExplorer.coverageEnabled', enabled);
+  }
+
+  /**
+   * Puts what the tests covered above the list of tests.
+   */
+  private showCoverageSummary() {
+    if (!this.coverageEnabled) {
+      this.goTestProvider.coverageSummary = undefined;
+      return;
+    }
+    const percent = this.coverage.percent;
+    const files = this.coverage.report().length;
+    this.goTestProvider.coverageSummary =
+      percent === undefined
+        ? 'Coverage: run tests to see it'
+        : `Coverage ${percent.toFixed(1)}% (${files} ${files === 1 ? 'file' : 'files'})`;
   }
 
   /**
@@ -240,6 +257,7 @@ export class GoTestExplorer {
       }
     });
     this.coverage.update(files);
+    this.showCoverageSummary();
   }
 
   /**

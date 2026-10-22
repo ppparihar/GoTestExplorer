@@ -227,6 +227,10 @@ export class EventEmitter<T> {
   }
 }
 
+export class ThemeIcon {
+  constructor(public readonly id: string) {}
+}
+
 export class TreeItem {
   contextValue?: string;
   command?: unknown;
@@ -855,6 +859,7 @@ export default {
   Uri,
   Disposable,
   EventEmitter,
+  ThemeIcon,
   TreeItem,
   SymbolInformation,
   WorkspaceConfiguration,

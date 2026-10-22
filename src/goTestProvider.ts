@@ -17,6 +17,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private _discoveredTests: TestNode[] = [];
   private _discovering: boolean;
   private _filter = '';
+  private _coverageNode: TestNode | undefined;
   private _statuses: ReadonlySet<TestStatus> = new Set();
   /**
    * The nodes whose result changed since the tree was last redrawn.
@@ -88,7 +89,27 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     nodes.forEach((node) => this.refresh(node));
   }
 
+  /**
+   * What the tests covered, shown as a row above the list of tests. Undefined
+   * removes the row.
+   */
+  set coverageSummary(text: string | undefined) {
+    this._coverageNode = text === undefined ? undefined : new TestNode(text, null);
+    this.refresh();
+  }
+
   getTreeItem(testNode: TestNode): vscode.TreeItem {
+    if (testNode === this._coverageNode) {
+      const item = new vscode.TreeItem(testNode.name, vscode.TreeItemCollapsibleState.None);
+      item.contextValue = 'coverage';
+      item.iconPath = new vscode.ThemeIcon('shield');
+      item.tooltip = 'Code coverage of the last test runs. Click for the files.';
+      item.command = {
+        command: 'goTestExplorer.showCoverageReport',
+        title: 'Show Code Coverage by File',
+      };
+      return item;
+    }
     const treeItem = new vscode.TreeItem(
       testNode.name,
       testNode.isTestSuite
@@ -124,7 +145,8 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     if (this._discovering) {
       return Promise.resolve([new TestNode('Loading...', null)]);
     }
-    return Promise.resolve(this.visibleTests);
+    const coverage = this._coverageNode ? [this._coverageNode] : [];
+    return Promise.resolve([...coverage, ...this.visibleTests]);
   }
 
   /**
