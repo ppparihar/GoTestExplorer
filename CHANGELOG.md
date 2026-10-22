@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Added
-- A filter button (funnel icon) in the title of the test view. It opens a search box, and the tree follows the text as it is typed (Enter keeps the filter, Escape puts back the previous one), showing only the tests whose name, or whose file name, has all of its words. "Run All" and the run button of a file then run only the tests that are shown. The button turns into "Clear Filter" while a filter is on. A second button filters by status: failed, passed or not run. It combines with the search text, and "Run All" then runs only the failed (or passed, or not run) tests. The view also has one button that collapses all the test files, and turns into one that expands them again. (#26, #15)
+- A filter button (funnel icon) in the title of the test view. It opens one box for the whole filter: type words of a test or file name, and tick Failed, Passed or Not run. The tree follows the box as you type and tick (Enter keeps the filter, Escape puts back the previous one). "Run All" and the run button of a file then run only the tests that are shown, for example only the failed ones. The button turns into "Clear Filter" while a filter is on. The view also has one button that collapses all the test files, and turns into one that expands them again. (#26, #15)
 
 ## V0.2.1
 

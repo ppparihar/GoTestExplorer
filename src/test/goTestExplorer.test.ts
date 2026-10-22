@@ -348,10 +348,11 @@ describe('GoTestExplorer runs a whole module', () => {
     explorer.commands.sendDiscoveredTests([a]);
     explorer.commands.sendTestResult(new TestResult(a.uri, 'TestAlpha', true, []));
     explorer.commands.sendTestResult(new TestResult(a.uri, 'TestBeta', false, []));
-    __state.quickPickAnswer = (items) =>
-      items.filter((i) => (i as { status: string }).status === 'failed');
 
-    await vscode.commands.executeCommand('goTestExplorer.filterByStatus');
+    await vscode.commands.executeCommand('goTestExplorer.filterTests');
+    const box = __state.quickPicks[__state.quickPicks.length - 1];
+    box.tick('failed');
+    box.accept();
     expect(explorer.goTestProvider.statuses.has('failed')).toBe(true);
 
     await vscode.commands.executeCommand('goTestExplorer.runAllTest');
@@ -393,7 +394,7 @@ describe('GoTestExplorer runs a whole module', () => {
   describe('the filter box', () => {
     const openBox = async () => {
       await vscode.commands.executeCommand('goTestExplorer.filterTests');
-      return __state.inputBoxes[__state.inputBoxes.length - 1];
+      return __state.quickPicks[__state.quickPicks.length - 1];
     };
 
     it('narrows the tree while the text is typed, and keeps it on Enter', async () => {
@@ -408,10 +409,22 @@ describe('GoTestExplorer runs a whole module', () => {
 
     it('puts back the previous filter on Escape', async () => {
       explorer.goTestProvider.filter = 'alpha';
+      explorer.goTestProvider.statuses = ['passed'];
       const box = await openBox();
       box.type('gamma');
+      box.tick('failed');
       box.cancel();
       expect(explorer.goTestProvider.filter).toBe('alpha');
+      expect(Array.from(explorer.goTestProvider.statuses)).toEqual(['passed']);
+    });
+
+    it('applies the text and the statuses together, and shows the statuses whatever is typed', async () => {
+      const box = await openBox();
+      expect(box.items.every((item) => (item as { alwaysShow: boolean }).alwaysShow)).toBe(true);
+      box.type('beta');
+      box.tick('failed', 'notRun');
+      expect(explorer.goTestProvider.filter).toBe('beta');
+      expect(Array.from(explorer.goTestProvider.statuses)).toEqual(['failed', 'notRun']);
     });
   });
 

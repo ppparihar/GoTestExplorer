@@ -142,11 +142,6 @@
                     "group": "navigation@3"
                 },
                 {
-                    "command": "goTestExplorer.filterByStatus",
-                    "when": "view == goTestExplorer",
-                    "group": "navigation@4"
-                },
-                {
                     "command": "goTestExplorer.clearFilter",
                     "when": "view == goTestExplorer && goTestExplorer.filterActive",
                     "group": "navigation@3"
@@ -197,11 +192,6 @@
                 "command": "goTestExplorer.filterTests",
                 "title": "Filter Tests",
                 "icon": "$(filter)"
-            },
-            {
-                "command": "goTestExplorer.filterByStatus",
-                "title": "Filter Tests by Status",
-                "icon": "$(checklist)"
             },
             {
                 "command": "goTestExplorer.clearFilter",

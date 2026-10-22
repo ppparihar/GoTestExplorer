@@ -96,12 +96,6 @@ export class GoTestExplorer {
       vscode.commands.registerCommand('goTestExplorer.filterTests', this.onFilterTests.bind(this)),
     );
     context.subscriptions.push(
-      vscode.commands.registerCommand(
-        'goTestExplorer.filterByStatus',
-        this.onFilterByStatus.bind(this),
-      ),
-    );
-    context.subscriptions.push(
       vscode.commands.registerCommand('goTestExplorer.clearFilter', () => {
         this.goTestProvider.statuses = [];
         this.setFilter('');
@@ -169,51 +163,51 @@ export class GoTestExplorer {
   }
 
   /**
-   * Asks for the text the tests are narrowed to.
+   * One box for the whole filter: the text is typed in it, and the statuses
+   * are ticked in its list.
    *
-   * The tree follows the text as it is typed. Enter keeps the filter, and
+   * The tree follows the box as it changes. Enter keeps the filter, and
    * Escape puts back the one that was on before.
    */
   private onFilterTests() {
-    const previous = this.goTestProvider.filter;
-    const input = vscode.window.createInputBox();
-    let accepted = false;
-    input.title = 'Filter tests';
-    input.placeholder = 'Words of a test name or a file name';
-    input.value = previous;
-    input.onDidChangeValue((text) => this.setFilter(text));
-    input.onDidAccept(() => {
-      accepted = true;
-      input.hide();
-    });
-    input.onDidHide(() => {
-      if (!accepted) {
-        this.setFilter(previous);
-      }
-      input.dispose();
-    });
-    input.show();
-  }
+    const provider = this.goTestProvider;
+    const previousText = provider.filter;
+    const previousStatuses = Array.from(provider.statuses);
 
-  /**
-   * Asks for the statuses the tests are narrowed to.
-   */
-  private async onFilterByStatus() {
     const choices: Array<vscode.QuickPickItem & { status: TestStatus }> = [
-      { label: 'Failed', status: 'failed' },
-      { label: 'Passed', status: 'passed' },
-      { label: 'Not run', status: 'notRun' },
+      { label: '$(error) Failed', status: 'failed' },
+      { label: '$(pass) Passed', status: 'passed' },
+      { label: '$(circle-outline) Not run', status: 'notRun' },
     ];
-    choices.forEach((choice) => (choice.picked = this.goTestProvider.statuses.has(choice.status)));
-    const picked = await vscode.window.showQuickPick(choices, {
-      title: 'Filter tests by status',
-      placeHolder: 'Show only the tests with these statuses (none picked shows every status)',
-      canPickMany: true,
-    });
-    if (picked) {
-      this.goTestProvider.statuses = picked.map((choice) => choice.status);
+    // The statuses stay in the list whatever is typed: the built-in matching
+    // of the box would otherwise hide them.
+    choices.forEach((choice) => (choice.alwaysShow = true));
+
+    const box = vscode.window.createQuickPick<(typeof choices)[number]>();
+    let accepted = false;
+    box.title = 'Filter tests';
+    box.placeholder = 'Type words of a test or file name, and tick the statuses to show';
+    box.canSelectMany = true;
+    box.items = choices;
+    box.selectedItems = choices.filter((choice) => provider.statuses.has(choice.status));
+    box.value = previousText;
+    box.onDidChangeValue((text) => this.setFilter(text));
+    box.onDidChangeSelection((picked) => {
+      provider.statuses = picked.map((choice) => choice.status);
       this.showFilter();
-    }
+    });
+    box.onDidAccept(() => {
+      accepted = true;
+      box.hide();
+    });
+    box.onDidHide(() => {
+      if (!accepted) {
+        provider.statuses = previousStatuses;
+        this.setFilter(previousText);
+      }
+      box.dispose();
+    });
+    box.show();
   }
 
   private setFilter(text: string) {
