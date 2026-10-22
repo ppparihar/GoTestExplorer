@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { CoverBlock, coveragePercent, markedLines } from './lib/coverageProfile';
 
 /**
@@ -87,6 +88,29 @@ export class CoverageDecorations implements vscode.Disposable {
       return undefined;
     }
     return coveragePercent(Array.from(this.files.values()).flat());
+  }
+
+  /**
+   * The share of the statements of one file that ran, or undefined when the
+   * file was not covered.
+   */
+  percentOfFile(file: string): number | undefined {
+    const blocks = this.files.get(file);
+    return blocks ? coveragePercent(blocks) : undefined;
+  }
+
+  /**
+   * The share of the statements of the files of one directory that ran, or
+   * undefined when none of them was covered.
+   */
+  percentOfDirectory(dir: string): number | undefined {
+    const blocks: CoverBlock[] = [];
+    this.files.forEach((fileBlocks, file) => {
+      if (path.dirname(file) === dir) {
+        blocks.push(...fileBlocks);
+      }
+    });
+    return blocks.length > 0 ? coveragePercent(blocks) : undefined;
   }
 
   private render(): void {

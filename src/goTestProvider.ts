@@ -18,6 +18,7 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
   private _discovering: boolean;
   private _filter = '';
   private _coverageNode: TestNode | undefined;
+  private _fileCoverage: ReadonlyMap<string, string> = new Map();
   private _statuses: ReadonlySet<TestStatus> = new Set();
   /**
    * The nodes whose result changed since the tree was last redrawn.
@@ -98,6 +99,15 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
     this.refresh();
   }
 
+  /**
+   * What the tests covered for each test file, as the text shown beside the
+   * file, keyed by the path of the test file.
+   */
+  set fileCoverage(coverage: ReadonlyMap<string, string>) {
+    this._fileCoverage = coverage;
+    this.refresh();
+  }
+
   getTreeItem(testNode: TestNode): vscode.TreeItem {
     if (testNode === this._coverageNode) {
       const item = new vscode.TreeItem(testNode.name, vscode.TreeItemCollapsibleState.None);
@@ -116,6 +126,10 @@ export class GoTestProvider implements vscode.TreeDataProvider<TestNode> {
         ? vscode.TreeItemCollapsibleState.Expanded
         : vscode.TreeItemCollapsibleState.None,
     );
+
+    if (testNode.isTestSuite) {
+      treeItem.description = this._fileCoverage.get(testNode.uri.fsPath);
+    }
 
     treeItem.contextValue = this._discovering
       ? 'discovering'

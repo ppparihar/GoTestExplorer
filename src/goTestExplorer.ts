@@ -183,15 +183,41 @@ export class GoTestExplorer {
    */
   private showCoverageSummary() {
     if (!this.coverageEnabled) {
+      this.goTestProvider.fileCoverage = new Map();
       this.goTestProvider.coverageSummary = undefined;
       return;
     }
+    this.goTestProvider.fileCoverage = this.coverageOfTestFiles();
     const percent = this.coverage.percent;
     const files = this.coverage.report().length;
     this.goTestProvider.coverageSummary =
       percent === undefined
         ? 'Coverage: run tests to see it'
         : `Coverage ${percent.toFixed(1)}% (${files} ${files === 1 ? 'file' : 'files'})`;
+  }
+
+  /**
+   * What the tests covered for each test file, to be shown beside it.
+   *
+   * The coverage of a test file is the coverage of the file it tests, by the
+   * naming of Go (`a_test.go` tests `a.go`). A test file without such a file
+   * shows the coverage of its package.
+   */
+  private coverageOfTestFiles(): Map<string, string> {
+    const shown = new Map<string, string>();
+    this.goTestProvider.discoveredTests.forEach((suite) => {
+      const testFile = suite.uri.fsPath;
+      const own = this.coverage.percentOfFile(testFile.replace(/_test\.go$/, '.go'));
+      if (own !== undefined) {
+        shown.set(testFile, `${own.toFixed(1)}%`);
+        return;
+      }
+      const wholePackage = this.coverage.percentOfDirectory(path.dirname(testFile));
+      if (wholePackage !== undefined) {
+        shown.set(testFile, `package ${wholePackage.toFixed(1)}%`);
+      }
+    });
+    return shown;
   }
 
   /**

@@ -439,6 +439,25 @@ describe('GoTestExplorer runs a whole module', () => {
       expect((await explorer.goTestProvider.getChildren())[0]).toBe(a);
     });
 
+    it('shows the coverage beside each test file', async () => {
+      const dir = path.join(moduleDir, 'pkg', 'a');
+      const a = suiteIn(dir, 'a_test.go', ['TestAlpha']);
+      const other = suiteIn(dir, 'extra_test.go', ['TestExtra']);
+      explorer.commands.sendDiscoveredTests([a, other]);
+      await vscode.commands.executeCommand('goTestExplorer.showCoverage');
+      runGoTest.mockResolvedValue(new RawTestResult(true, [], [], undefined, new Map(), profile()));
+      await vscode.commands.executeCommand('goTestExplorer.runTest', a.children[0]);
+      await waitFor(() => completed.length > 0);
+
+      const provider = explorer.goTestProvider;
+      // a_test.go tests a.go; extra_test.go has no extra.go, so its package shows.
+      expect(provider.getTreeItem(a).description).toBe('50.0%');
+      expect(provider.getTreeItem(other).description).toBe('package 50.0%');
+
+      await vscode.commands.executeCommand('goTestExplorer.hideCoverage');
+      expect(provider.getTreeItem(a).description).toBeUndefined();
+    });
+
     it('lists the covered files, the least covered first, and opens the one picked', async () => {
       const a = suiteIn(path.join(moduleDir, 'pkg', 'a'), 'a_test.go', ['TestAlpha']);
       explorer.commands.sendDiscoveredTests([a]);
