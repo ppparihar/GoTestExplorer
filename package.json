@@ -155,18 +155,12 @@
             {
                 "command": "goTestExplorer.cancelTestRun",
                 "title": "Cancel Test Run",
-                "icon": {
-                    "light": "resources/light/cancel.svg",
-                    "dark": "resources/dark/cancel.svg"
-                }
+                "icon": "$(debug-stop)"
             },
             {
                 "command": "goTestExplorer.refreshTestExplorer",
                 "title": "Refresh",
-                "icon": {
-                    "light": "resources/light/refresh.svg",
-                    "dark": "resources/dark/refresh.svg"
-                }
+                "icon": "$(refresh)"
             },
             {
                 "command": "goTestExplorer.runTestSuite",
